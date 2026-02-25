@@ -315,7 +315,9 @@ async function syncApprovedImages(payload: ReviewSyncPayload, actor: string): Pr
   }
 
   const replaceExisting = parseBoolean(payload.replaceExisting, false)
-  const approvedAt = parseApprovedAt(payload.approvedAt)
+  const approvedAtInput = cleanText(payload.approvedAt)
+  const approvedAt = parseApprovedAt(approvedAtInput)
+  const isApprovalUpdate = approvedAtInput !== null
   const configuredBaseUrl = cleanText(process.env.FUNCRAWL_BASE_URL) ?? null
   const normalizedBaseUrl = configuredBaseUrl ? normalizeBaseUrl(configuredBaseUrl) : null
   const inputImages = Array.isArray(payload.images) ? payload.images : []
@@ -339,6 +341,14 @@ async function syncApprovedImages(payload: ReviewSyncPayload, actor: string): Pr
   const selectedImages = normalizedImages.filter((img) => img.rank >= 1 && img.rank <= MAX_SYNC_IMAGES)
   const overflowCount = normalizedImages.length - selectedImages.length
   const slug = cleanText(payload.slug)
+
+  if (isApprovalUpdate && approvedAt === null) {
+    throw new Error('approvedAt is not a valid ISO timestamp')
+  }
+
+  if (isApprovalUpdate && selectedImages.length === 0) {
+    throw new Error('Approved image sync requires at least one image')
+  }
 
   const client = await pool.connect()
   try {
@@ -1041,6 +1051,7 @@ function createDevApiPlugin(): Plugin {
 
       try {
         if (parsed.pathname === '/review/approvals' && req.method === 'POST') {
+          const startedAt = Date.now();
           const expectedToken = cleanText(process.env.REVIEW_SYNC_TOKEN)
           if (!expectedToken) {
             sendJson(res, 503, { message: 'Review sync API is not configured.' })
@@ -1063,7 +1074,14 @@ function createDevApiPlugin(): Plugin {
           }
 
           const actor = cleanText(req.headers['x-sync-actor']) ?? 'review-sync-api'
+          console.log(
+            `[review-sync] actor=${actor} activity=${cleanText(payload.activityId) ?? '(missing)'} ` +
+              `slug=${cleanText(payload.slug) ?? '(missing)'} replace=${parseBoolean(payload.replaceExisting, false)} ` +
+              `images=${Array.isArray(payload.images) ? payload.images.length : 0}`,
+          )
+
           const result = await syncApprovedImages(payload, actor)
+          console.log(`[review-sync] actor=${actor} activity=${result.externalId} replaced=${result.replaced} imported=${result.importedCount} overflow=${result.overflowCount} duration_ms=${Date.now() - startedAt}`)
           sendJson(res, 200, result)
           return
         }
