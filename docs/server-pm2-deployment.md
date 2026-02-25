@@ -18,6 +18,7 @@ sudo npm i -g pm2
 
 Optional but supported by scripts:
 - `portman` installed and available in `PATH`
+- Either `docker compose` plugin or legacy `docker-compose` binary
 
 ## 2) Clone repositories on server
 

@@ -58,6 +58,20 @@ next_free_port_fallback() {
   printf '%s\n' "$port"
 }
 
+resolve_compose_cmd() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    printf 'docker|compose\n'
+    return 0
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    printf 'docker-compose|\n'
+    return 0
+  fi
+
+  return 1
+}
+
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -89,12 +103,19 @@ fi
 echo "[fun-admin] installing dependencies"
 npm ci
 
-if command -v docker >/dev/null 2>&1; then
-  echo "[fun-admin] ensuring Postgres container is up"
-  docker compose up -d postgres
-else
-  echo "docker not found; cannot start Postgres container automatically."
+COMPOSE_SELECTOR="$(resolve_compose_cmd || true)"
+if [[ -z "$COMPOSE_SELECTOR" ]]; then
+  echo "Neither 'docker compose' nor 'docker-compose' is available."
+  echo "Install Docker Compose support, or start Postgres manually before running this script."
   exit 1
+fi
+IFS='|' read -r COMPOSE_BIN COMPOSE_SUBCMD <<< "$COMPOSE_SELECTOR"
+if [[ -n "$COMPOSE_SUBCMD" ]]; then
+  echo "[fun-admin] ensuring Postgres container is up using: $COMPOSE_BIN $COMPOSE_SUBCMD"
+  "$COMPOSE_BIN" "$COMPOSE_SUBCMD" up -d postgres
+else
+  echo "[fun-admin] ensuring Postgres container is up using: $COMPOSE_BIN"
+  "$COMPOSE_BIN" up -d postgres
 fi
 
 echo "[fun-admin] applying schema"
