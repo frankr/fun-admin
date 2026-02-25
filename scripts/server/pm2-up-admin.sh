@@ -202,6 +202,7 @@ fi
 ADMIN_PORT="${ADMIN_PORT:-}"
 DATABASE_URL="${DATABASE_URL:-$DEFAULT_DATABASE_URL}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-${REVIEW_PASSWORD:-}}"
+REVIEW_SYNC_TOKEN="${REVIEW_SYNC_TOKEN:-}"
 
 if [[ -z "$ADMIN_PORT" ]]; then
   if ADMIN_PORT="$(next_port_from_portman)"; then
@@ -265,18 +266,21 @@ echo "[fun-admin] building web app"
 npm run build
 
 echo "[fun-admin] starting PM2 process $APP_NAME on port $ADMIN_PORT"
+PM2_ENV_ARGS=(ADMIN_PORT="$ADMIN_PORT" DATABASE_URL="$DATABASE_URL")
+if [[ -n "$ADMIN_PASSWORD" ]]; then
+  PM2_ENV_ARGS+=(ADMIN_PASSWORD="$ADMIN_PASSWORD")
+fi
+if [[ -n "$REVIEW_SYNC_TOKEN" ]]; then
+  PM2_ENV_ARGS+=(REVIEW_SYNC_TOKEN="$REVIEW_SYNC_TOKEN")
+fi
+if [[ -n "${FUNCRAWL_BASE_URL:-}" ]]; then
+  PM2_ENV_ARGS+=(FUNCRAWL_BASE_URL="$FUNCRAWL_BASE_URL")
+fi
+
 if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-  if [[ -n "$ADMIN_PASSWORD" ]]; then
-    ADMIN_PORT="$ADMIN_PORT" DATABASE_URL="$DATABASE_URL" ADMIN_PASSWORD="$ADMIN_PASSWORD" pm2 restart "$APP_NAME" --update-env
-  else
-    ADMIN_PORT="$ADMIN_PORT" DATABASE_URL="$DATABASE_URL" pm2 restart "$APP_NAME" --update-env
-  fi
+  env "${PM2_ENV_ARGS[@]}" pm2 restart "$APP_NAME" --update-env
 else
-  if [[ -n "$ADMIN_PASSWORD" ]]; then
-    ADMIN_PORT="$ADMIN_PORT" DATABASE_URL="$DATABASE_URL" ADMIN_PASSWORD="$ADMIN_PASSWORD" pm2 start npm --name "$APP_NAME" -- run serve:pm2
-  else
-    ADMIN_PORT="$ADMIN_PORT" DATABASE_URL="$DATABASE_URL" pm2 start npm --name "$APP_NAME" -- run serve:pm2
-  fi
+  env "${PM2_ENV_ARGS[@]}" pm2 start npm --name "$APP_NAME" -- run serve:pm2
 fi
 
 pm2 save

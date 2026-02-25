@@ -107,6 +107,23 @@ npm run pm2:up:stack
 
 `APPROVED_IMAGES_SYNC_URL` can be used together with `APPROVED_IMAGES_FILE`.
 
+## 4c) Real-time approval sync (recommended)
+
+Set `REVIEW_SYNC_TOKEN` in admin startup so image review can call:
+- `POST https://admin.funzilla.app/api/review/approvals`
+
+Example:
+```bash
+cd ~/funzilla/fun-admin
+REVIEW_SYNC_TOKEN="replace-with-strong-shared-secret" \
+FUNCRAWL_BASE_URL="https://funcrawl.funzilla.app" \
+ADMIN_PORT=5173 \
+EXPO_PUBLIC_API_BASE_URL="https://admin.funzilla.app" \
+npm run pm2:up:stack
+```
+
+Then configure image-review service to send approval events to admin with that token.
+
 ## 5) One command to bring up both services
 
 From `fun-admin`:

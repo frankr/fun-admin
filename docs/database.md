@@ -117,6 +117,46 @@ npm run pm2:up:stack
 
 `APPROVED_IMAGES_SYNC_REQUIRED=1` makes startup fail if remote sync cannot be fetched.
 If omitted, startup continues and logs a warning.
+
+## Direct approval sync API (preferred)
+
+For real-time integration, image review can push approvals directly into admin DB:
+
+`POST /api/review/approvals`
+
+Headers:
+- `Authorization: Bearer <REVIEW_SYNC_TOKEN>` or `x-review-sync-token: <REVIEW_SYNC_TOKEN>`
+- `Content-Type: application/json`
+- optional: `x-sync-actor: image-review-service`
+
+Example payload:
+```json
+{
+  "activityId": "TX12345",
+  "slug": "TX12345-some-domain",
+  "approvedAt": "2026-02-25T12:34:56Z",
+  "replaceExisting": false,
+  "images": [
+    {
+      "rank": 1,
+      "filename": "image_1.webp",
+      "sourceFilename": "source_1.jpg",
+      "tier": "picks",
+      "classification": "hero",
+      "aiDescription": "Kids playing in the splash area",
+      "imageUrl": "https://funcrawl.funzilla.app/api/images/TX12345-some-domain/picks/image_1.webp"
+    }
+  ]
+}
+```
+
+Behavior:
+- upserts images into `activity_images` immediately;
+- updates open/resolved image issues in `activity_data_issues`;
+- supports event updates (`replaceExisting=false`) or full replacement (`replaceExisting=true`).
+
+Required server env:
+- `REVIEW_SYNC_TOKEN` (shared secret between review service and admin API).
 ```
 
 ## Image storage recommendation

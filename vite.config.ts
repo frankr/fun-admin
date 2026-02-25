@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { URL } from 'node:url'
-import { Pool } from 'pg'
+import { Pool, type PoolClient } from 'pg'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -11,6 +11,7 @@ const MIN_RECOMMENDED_IMAGES = 3
 const AUTH_COOKIE_NAME = 'admin_auth'
 const AUTH_LOGIN_PATH = '/_auth/login'
 const AUTH_LOGIN_POST_PATH = '/_auth/api/login'
+const MAX_SYNC_IMAGES = 5
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
@@ -91,6 +92,26 @@ type ActivityDetailResponse = {
   openIssues: ActivityDetailIssue[]
 }
 
+type ReviewSyncImageInput = {
+  rank?: number
+  filename?: string
+  sourceFilename?: string
+  tier?: string
+  classification?: string
+  aiDescription?: string
+  imageUrl?: string
+  publicUrl?: string
+}
+
+type ReviewSyncPayload = {
+  activityId?: string
+  approvedAt?: string
+  slug?: string
+  imageTier?: string
+  replaceExisting?: boolean
+  images?: ReviewSyncImageInput[]
+}
+
 function sendJson(res: ServerResponse, statusCode: number, payload: unknown): void {
   res.statusCode = statusCode
   res.setHeader('Content-Type', 'application/json')
@@ -127,6 +148,328 @@ function readRequestBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(body))
     req.on('error', reject)
   })
+}
+
+function cleanText(value: unknown): string | null {
+  if (value == null) {
+    return null
+  }
+  const result = String(value).trim()
+  return result === '' ? null : result
+}
+
+function parseBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') {
+      return true
+    }
+    if (normalized === 'false') {
+      return false
+    }
+  }
+  return fallback
+}
+
+function parseApprovedAt(value: unknown): string | null {
+  const cleaned = cleanText(value)
+  if (!cleaned) {
+    return null
+  }
+  const date = new Date(cleaned)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+  return date.toISOString()
+}
+
+function normalizeBaseUrl(rawValue: string): string {
+  return rawValue.replace(/\/+$/, '')
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value)
+}
+
+function normalizeImageUrl(rawValue: unknown, baseUrl: string | null): string | null {
+  const cleaned = cleanText(rawValue)
+  if (!cleaned) {
+    return null
+  }
+  if (isAbsoluteUrl(cleaned)) {
+    return cleaned
+  }
+  if (!baseUrl) {
+    return null
+  }
+  if (cleaned.startsWith('/')) {
+    return `${baseUrl}${cleaned}`
+  }
+  return `${baseUrl}/${cleaned.replace(/^\/+/, '')}`
+}
+
+function buildFunCrawlImageUrl(
+  baseUrl: string | null,
+  slug: string | null,
+  tier: string | null,
+  filename: string | null,
+): string | null {
+  if (!baseUrl || !slug || !tier || !filename) {
+    return null
+  }
+  return `${baseUrl}/api/images/${encodeURIComponent(slug)}/${encodeURIComponent(tier)}/${encodeURIComponent(filename)}`
+}
+
+function extractSyncToken(req: IncomingMessage): string | null {
+  const authHeader = req.headers.authorization
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice('Bearer '.length).trim()
+  }
+  const raw = req.headers['x-review-sync-token']
+  if (Array.isArray(raw)) {
+    return raw[0] ?? null
+  }
+  return raw ?? null
+}
+
+async function ensureImageSlots(client: PoolClient, activityId: string): Promise<void> {
+  for (let rank = 1; rank <= MAX_SYNC_IMAGES; rank += 1) {
+    await client.query(
+      `INSERT INTO activity_images (activity_id, rank_order, status)
+       VALUES ($1, $2, 'pending')
+       ON CONFLICT (activity_id, rank_order) DO NOTHING`,
+      [activityId, rank],
+    )
+  }
+}
+
+async function setImageIssueOpen(
+  client: PoolClient,
+  activityId: string,
+  issueCode: string,
+  message: string,
+  actor: string,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO activity_data_issues (
+      activity_id,
+      field_name,
+      issue_code,
+      issue_message,
+      status
+    ) VALUES ($1, 'Images', $2, $3, 'open')
+    ON CONFLICT (activity_id, field_name, issue_code)
+    WHERE status = 'open'
+    DO UPDATE SET
+      issue_message = EXCLUDED.issue_message,
+      last_detected_at = NOW(),
+      resolved_at = NULL,
+      resolved_by = NULL,
+      resolution_note = NULL`,
+    [activityId, issueCode, message],
+  )
+
+  await client.query(
+    `UPDATE activity_data_issues
+     SET status = 'resolved', resolved_at = NOW(), resolved_by = $2, resolution_note = 'Superseded by new image issue state'
+     WHERE activity_id = $1
+       AND field_name = 'Images'
+       AND issue_code <> $3
+       AND status = 'open'
+       AND issue_code IN ('NO_APPROVED_IMAGES', 'APPROVED_IMAGES_EXCEED_LIMIT')`,
+    [activityId, actor, issueCode],
+  )
+}
+
+async function resolveImageIssue(
+  client: PoolClient,
+  activityId: string,
+  issueCode: string,
+  actor: string,
+): Promise<void> {
+  await client.query(
+    `UPDATE activity_data_issues
+     SET status = 'resolved', resolved_at = NOW(), resolved_by = $3, resolution_note = 'Resolved by review sync API'
+     WHERE activity_id = $1
+       AND field_name = 'Images'
+       AND issue_code = $2
+       AND status = 'open'`,
+    [activityId, issueCode, actor],
+  )
+}
+
+async function syncApprovedImages(payload: ReviewSyncPayload, actor: string): Promise<{
+  activityId: string
+  externalId: string
+  replaced: boolean
+  importedCount: number
+  overflowCount: number
+  readyImageCount: number
+}> {
+  const externalId = cleanText(payload.activityId)?.toUpperCase() ?? null
+  if (!externalId) {
+    throw new Error('activityId is required')
+  }
+
+  const replaceExisting = parseBoolean(payload.replaceExisting, false)
+  const approvedAt = parseApprovedAt(payload.approvedAt)
+  const configuredBaseUrl = cleanText(process.env.FUNCRAWL_BASE_URL) ?? null
+  const normalizedBaseUrl = configuredBaseUrl ? normalizeBaseUrl(configuredBaseUrl) : null
+  const inputImages = Array.isArray(payload.images) ? payload.images : []
+
+  const normalizedImages = inputImages
+    .map((img, index) => {
+      const rankRaw = Number(img.rank ?? index + 1)
+      return {
+        rank: Number.isFinite(rankRaw) ? Math.floor(rankRaw) : Number.NaN,
+        filename: cleanText(img.filename),
+        sourceFilename: cleanText(img.sourceFilename),
+        tier: cleanText(img.tier ?? payload.imageTier) ?? 'picks',
+        classification: cleanText(img.classification),
+        description: cleanText(img.aiDescription),
+        imageUrl: normalizeImageUrl(img.imageUrl ?? img.publicUrl, normalizedBaseUrl),
+      }
+    })
+    .filter((img) => Number.isFinite(img.rank) && img.filename)
+
+  normalizedImages.sort((a, b) => a.rank - b.rank)
+  const selectedImages = normalizedImages.filter((img) => img.rank >= 1 && img.rank <= MAX_SYNC_IMAGES)
+  const overflowCount = normalizedImages.length - selectedImages.length
+  const slug = cleanText(payload.slug)
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const activityResult = await client.query<{ id: string }>(
+      'SELECT id FROM activities WHERE external_id = $1 LIMIT 1',
+      [externalId],
+    )
+    if (activityResult.rowCount === 0) {
+      throw new Error(`Activity not found: ${externalId}`)
+    }
+    const activityId = activityResult.rows[0].id
+
+    await ensureImageSlots(client, activityId)
+
+    if (replaceExisting) {
+      await client.query(
+        `UPDATE activity_images
+         SET
+           status = 'pending',
+           storage_provider = NULL,
+           storage_key = NULL,
+           source_filename = NULL,
+           public_url = NULL,
+           width_px = NULL,
+           height_px = NULL,
+           review_classification = NULL,
+           alt_text = NULL,
+           approved_at = NULL
+         WHERE activity_id = $1`,
+        [activityId],
+      )
+    }
+
+    for (const image of selectedImages) {
+      const publicUrl =
+        image.imageUrl ??
+        buildFunCrawlImageUrl(normalizedBaseUrl, slug, image.tier, image.filename)
+      const storageKey = slug ? `${slug}/${image.tier}/${image.filename}` : image.filename
+
+      await client.query(
+        `INSERT INTO activity_images (
+           activity_id,
+           rank_order,
+           storage_provider,
+           storage_key,
+           source_filename,
+           public_url,
+           review_classification,
+           alt_text,
+           approved_at,
+           status
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, 'ready'
+         )
+         ON CONFLICT (activity_id, rank_order)
+         DO UPDATE SET
+           storage_provider = EXCLUDED.storage_provider,
+           storage_key = EXCLUDED.storage_key,
+           source_filename = EXCLUDED.source_filename,
+           public_url = EXCLUDED.public_url,
+           review_classification = EXCLUDED.review_classification,
+           alt_text = EXCLUDED.alt_text,
+           approved_at = EXCLUDED.approved_at,
+           status = 'ready'`,
+        [
+          activityId,
+          image.rank,
+          'fun-crawl',
+          storageKey,
+          image.sourceFilename,
+          publicUrl,
+          image.classification,
+          image.description,
+          approvedAt,
+        ],
+      )
+    }
+
+    const readyResult = await client.query<{ ready_count: number }>(
+      `SELECT COUNT(*)::int AS ready_count
+       FROM activity_images
+       WHERE activity_id = $1 AND status = 'ready'`,
+      [activityId],
+    )
+    const readyImageCount = readyResult.rows[0]?.ready_count ?? 0
+
+    if (readyImageCount === 0) {
+      await setImageIssueOpen(
+        client,
+        activityId,
+        'NO_APPROVED_IMAGES',
+        'No approved images were imported for this activity.',
+        actor,
+      )
+    } else {
+      await resolveImageIssue(client, activityId, 'NO_APPROVED_IMAGES', actor)
+    }
+
+    if (overflowCount > 0) {
+      await setImageIssueOpen(
+        client,
+        activityId,
+        'APPROVED_IMAGES_EXCEED_LIMIT',
+        'More than 5 approved images were provided. Only ranks 1-5 were imported.',
+        actor,
+      )
+    } else {
+      await resolveImageIssue(client, activityId, 'APPROVED_IMAGES_EXCEED_LIMIT', actor)
+    }
+
+    await client.query('COMMIT')
+    return {
+      activityId,
+      externalId,
+      replaced: replaceExisting,
+      importedCount: selectedImages.length,
+      overflowCount,
+      readyImageCount,
+    }
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      // no-op
+    }
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 function expectedAuthToken(password: string): string {
@@ -691,15 +1034,43 @@ function createDevApiPlugin(): Plugin {
     },
   ): void => {
     server.middlewares.use('/api', async (req: IncomingMessage, res: ServerResponse, next) => {
-      if (req.method !== 'GET') {
-        next()
-        return
-      }
-
       const parsed = new URL(req.url ?? '/', 'http://localhost')
       const cityCode = (parsed.searchParams.get('city') ?? 'HOU').toUpperCase()
 
       try {
+        if (parsed.pathname === '/review/approvals' && req.method === 'POST') {
+          const expectedToken = cleanText(process.env.REVIEW_SYNC_TOKEN)
+          if (!expectedToken) {
+            sendJson(res, 503, { message: 'Review sync API is not configured.' })
+            return
+          }
+
+          const providedToken = extractSyncToken(req)
+          if (!providedToken || providedToken !== expectedToken) {
+            sendJson(res, 401, { message: 'Unauthorized' })
+            return
+          }
+
+          const rawBody = await readRequestBody(req)
+          let payload: ReviewSyncPayload
+          try {
+            payload = JSON.parse(rawBody) as ReviewSyncPayload
+          } catch {
+            sendJson(res, 400, { message: 'Invalid JSON body.' })
+            return
+          }
+
+          const actor = cleanText(req.headers['x-sync-actor']) ?? 'review-sync-api'
+          const result = await syncApprovedImages(payload, actor)
+          sendJson(res, 200, result)
+          return
+        }
+
+        if (req.method !== 'GET') {
+          next()
+          return
+        }
+
         if (parsed.pathname === '/dashboard') {
           const dashboard = await getDashboard(cityCode)
 
