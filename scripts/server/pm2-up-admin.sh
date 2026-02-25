@@ -10,6 +10,10 @@ DEFAULT_ADMIN_PORT="${DEFAULT_ADMIN_PORT:-5173}"
 DEFAULT_DATABASE_URL="${DEFAULT_DATABASE_URL:-postgres://fun_admin:fun_admin@localhost:54329/fun_admin}"
 CITY_CODE="${CITY_CODE:-HOU}"
 FUNCRAWL_BASE_URL="${FUNCRAWL_BASE_URL:-https://funcrawl.buildwithspark.com}"
+POSTGRES_CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-fun_admin_postgres}"
+POSTGRES_DB_USER="${POSTGRES_DB_USER:-fun_admin}"
+POSTGRES_DB_NAME="${POSTGRES_DB_NAME:-fun_admin}"
+POSTGRES_DB_PASSWORD="${POSTGRES_DB_PASSWORD:-fun_admin}"
 
 extract_first_port() {
   local raw="$1"
@@ -78,7 +82,7 @@ ensure_postgres_with_docker_only() {
     return 1
   fi
 
-  local container_name="fun_admin_postgres"
+  local container_name="$POSTGRES_CONTAINER_NAME"
   local image_name="postgres:16-alpine"
   local container_exists
   container_exists="$(docker ps -a --format '{{.Names}}' | grep -x "$container_name" || true)"
@@ -91,9 +95,9 @@ ensure_postgres_with_docker_only() {
     docker run -d \
       --name "$container_name" \
       --restart unless-stopped \
-      -e POSTGRES_USER=fun_admin \
-      -e POSTGRES_PASSWORD=fun_admin \
-      -e POSTGRES_DB=fun_admin \
+      -e POSTGRES_USER="$POSTGRES_DB_USER" \
+      -e POSTGRES_PASSWORD="$POSTGRES_DB_PASSWORD" \
+      -e POSTGRES_DB="$POSTGRES_DB_NAME" \
       -p 54329:5432 \
       -v fun_admin_postgres_data:/var/lib/postgresql/data \
       "$image_name" >/dev/null
@@ -103,7 +107,7 @@ ensure_postgres_with_docker_only() {
   local retries=30
   local attempt=1
   while (( attempt <= retries )); do
-    if docker exec "$container_name" pg_isready -U fun_admin -d fun_admin >/dev/null 2>&1; then
+    if docker exec "$container_name" pg_isready -U "$POSTGRES_DB_USER" -d "$POSTGRES_DB_NAME" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -112,6 +116,17 @@ ensure_postgres_with_docker_only() {
 
   echo "Postgres container did not become ready in time."
   return 1
+}
+
+apply_schema() {
+  if command -v psql >/dev/null 2>&1; then
+    echo "[fun-admin] applying schema via local psql"
+    DATABASE_URL="$DATABASE_URL" npm run db:apply
+    return 0
+  fi
+
+  echo "[fun-admin] local psql not found; applying schema via docker exec"
+  docker exec -i "$POSTGRES_CONTAINER_NAME" psql -U "$POSTGRES_DB_USER" -d "$POSTGRES_DB_NAME" < db/schema.sql
 }
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -161,7 +176,7 @@ else
 fi
 
 echo "[fun-admin] applying schema"
-DATABASE_URL="$DATABASE_URL" npm run db:apply
+apply_schema
 
 if [[ -n "${CSV_FILE:-}" ]]; then
   echo "[fun-admin] importing activities from $CSV_FILE"
