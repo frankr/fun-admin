@@ -30,6 +30,30 @@ This command:
 - builds/starts `fun-admin` in PM2,
 - then starts Expo server in `funzilla-app` via PM2.
 
+## One-command automated deploy (recommended)
+
+Use this when you want fewer manual steps. It can:
+- pull latest `fun-admin` + `funzilla-app`,
+- optionally copy DB backup from source server over SSH and restore,
+- start/update full PM2 stack.
+
+Basic:
+
+```bash
+cd ~/funzilla/fun-admin
+EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run deploy:stack
+```
+
+With automatic DB transfer + restore from source server:
+
+```bash
+cd ~/funzilla/fun-admin
+IMPORT_REMOTE_DB=1 \
+SOURCE_SSH="user@source-host" \
+EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" \
+npm run deploy:stack
+```
+
 ## If `funzilla-app` is not a sibling directory
 
 Set explicit path:
@@ -70,6 +94,13 @@ Then `scp` the `.dump` and `.sha256` to target server, and restore:
 ```bash
 cd ~/funzilla/fun-admin
 BACKUP_FILE=~/funzilla/backups/<dump-file>.dump npm run db:restore
+```
+
+If you want this as one command (create backup on source, `scp`, verify, restore on target):
+
+```bash
+cd ~/funzilla/fun-admin
+SOURCE_SSH="user@source-host" npm run db:transfer
 ```
 
 ## Safe `fun-crawl` move (do not break image serving)

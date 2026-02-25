@@ -91,6 +91,30 @@ EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run pm2:up:stack
 
 This runs admin first, then mobile.
 
+## 5b) One command to sync + (optional) DB migrate + start stack
+
+Use deploy orchestrator to reduce manual steps:
+
+```bash
+cd ~/funzilla/fun-admin
+EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run deploy:stack
+```
+
+It will:
+- pull latest `main` in `fun-admin` and `funzilla-app`,
+- optionally import DB from a remote server,
+- then run `pm2:up:stack`.
+
+With remote DB copy + restore in same command:
+
+```bash
+cd ~/funzilla/fun-admin
+IMPORT_REMOTE_DB=1 \
+SOURCE_SSH="user@source-host" \
+EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" \
+npm run deploy:stack
+```
+
 ## 6) Make PM2 persistent across reboot
 
 Run once:
@@ -198,6 +222,13 @@ Restore on target server:
 ```bash
 cd ~/funzilla/fun-admin
 BACKUP_FILE=~/funzilla/backups/fun_admin_YYYYMMDD_HHMMSS.dump npm run db:restore
+```
+
+One-command transfer + restore on target:
+
+```bash
+cd ~/funzilla/fun-admin
+SOURCE_SSH="user@source-host" npm run db:transfer
 ```
 
 Then start/update services:
