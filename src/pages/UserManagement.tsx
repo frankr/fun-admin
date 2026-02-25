@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { mockUsers } from '../data/mockUsers';
 
 const UserManagement: React.FC = () => {
   return (
     <div className="max-w-[1280px] mx-auto w-full px-4 lg:px-10 py-8">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h1 className="text-slate-900 dark:text-white text-3xl font-black tracking-tight">User Management</h1>
@@ -16,7 +16,6 @@ const UserManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <div className="flex flex-col gap-2 rounded-xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex justify-between items-start">
@@ -44,7 +43,6 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters and Search */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl mb-6 p-4">
         <div className="flex flex-col md:flex-row gap-4 items-center">
           <div className="relative flex-1 w-full">
@@ -66,7 +64,6 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* User Data Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -82,74 +79,50 @@ const UserManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {/* User Row 1 */}
-              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="size-10 rounded-full bg-slate-200 bg-cover bg-center" style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuBCtBP396Dq-2OaBxUgkQsN6xOxjyNOWyY705gX5G8wX0StvTA7Em0dIEeYDt5LmGW_qVV1WTMD6Gd-7Ek83XR4t5hSNKBxSAUXjRVVW7Lu39d1fozgFyP5OQtEY5zdl6V2tQFwUYxRGyxF7NvKinOhWMl4gmnTT-0lHRckOgVo-AUJyUsK6SiZNmjZiyFPE326W708cy2UgIdygsNhpg8eDqQN7aCZtVM8eqX7WHk27OFHxipZhKwcSsuqacHMxC-3hAyKFvey9K4T')" }}></div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white leading-none">Alex Thompson</span>
-                      <span className="text-xs text-slate-500 mt-1">@alex_t</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">alex.thompson@gmail.com</td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">+1 (555) 0123</td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">Oct 12, 2023</td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">2h ago</td>
-                <td className="px-6 py-4">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
-                    Active
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors" title="Message User">
-                      <span className="material-symbols-outlined text-[18px]">mail</span>
-                    </button>
-                    <Link to="/users/1" className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors" title="View Details">
-                      <span className="material-symbols-outlined text-[18px]">visibility</span>
+              {mockUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                  <td className="px-6 py-4">
+                    <Link to={`/users/${user.id}`} className="flex items-center gap-3 group">
+                      <div className="size-10 rounded-full bg-slate-200 bg-cover bg-center ring-0 transition-all group-hover:ring-2 group-hover:ring-primary/40" style={{ backgroundImage: `url('${user.avatarUrl}')` }}></div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-900 dark:text-white leading-none group-hover:text-primary">{user.fullName}</span>
+                        <span className="text-xs text-slate-500 mt-1">{user.handle}</span>
+                      </div>
                     </Link>
-                  </div>
-                </td>
-              </tr>
-              {/* User Row 2 */}
-              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="size-10 rounded-full bg-slate-200 bg-cover bg-center" style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuCMCJ1VMNiVUAGMbC6EBoTb3st270vVmKEz5EIng3MpxsqB0wWuqo9-MVhd6tUlOrIE9-tLJOXWZfoQC_rDDg8SCM5-9MzTvDUqxZik_n7CkCEmGEYe88RlHYScdRpeH5WJNZvuKuG_vsyMVLP82jMWNYVHo8YTqzDKVKtnpJzn_kK4JmJnjoeuuRMso86T75kpMDUwCF4iju8ztIeWfm4g54SxjRUj3a9EU41EwGyfKkR23_YWpvSVVHzvv-oZPRG5SvRat5GGoA-Y')" }}></div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white leading-none">Sarah Chen</span>
-                      <span className="text-xs text-slate-500 mt-1">@schen_dev</span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{user.email}</td>
+                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{user.phone}</td>
+                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{user.createdDate}</td>
+                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{user.lastLogin}</td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        user.status === 'Active'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                      }`}
+                    >
+                      {user.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors" title="Message User">
+                        <span className="material-symbols-outlined text-[18px]">mail</span>
+                      </button>
+                      <Link to={`/users/${user.id}`} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors" title="View Details">
+                        <span className="material-symbols-outlined text-[18px]">visibility</span>
+                      </Link>
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">sarah.chen@tech.co</td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">+44 20 7123 4567</td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">Nov 05, 2023</td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">1d ago</td>
-                <td className="px-6 py-4">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                    Suspended
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors" title="Message User">
-                      <span className="material-symbols-outlined text-[18px]">mail</span>
-                    </button>
-                    <Link to="/users/2" className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors" title="View Details">
-                      <span className="material-symbols-outlined text-[18px]">visibility</span>
-                    </Link>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-        {/* Pagination */}
+
         <div className="flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-800">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Showing 1-2 of 12,840 users</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Showing 1-{mockUsers.length} of 12,840 users</span>
           <div className="flex gap-1">
             <button className="p-2 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors">
               <span className="material-symbols-outlined text-[18px]">chevron_left</span>
@@ -163,6 +136,7 @@ const UserManagement: React.FC = () => {
           </div>
         </div>
       </div>
+
       <footer className="mt-8 border-t border-slate-200 dark:border-slate-800 py-6 text-center">
         <p className="text-xs text-slate-500 dark:text-slate-600">© 2024 Funzinga Platform Admin. All rights reserved.</p>
       </footer>

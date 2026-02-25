@@ -1,7 +1,39 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { findMockUser } from '../data/mockUsers';
 
 const UserEditor: React.FC = () => {
+  const { id } = useParams();
+  const user = findMockUser(id);
+
+  if (!user) {
+    return (
+      <main className="flex flex-1 justify-center py-8">
+        <div className="layout-content-container flex flex-col w-full max-w-[960px] px-4 md:px-10 gap-6">
+          <div className="flex flex-wrap items-center gap-2 text-slate-500 dark:text-slate-400">
+            <Link className="text-sm font-medium hover:text-primary" to="/users">User Management</Link>
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+            <span className="text-sm font-medium text-slate-900 dark:text-slate-100">User Not Found</span>
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+            The user ID <span className="font-bold">{id ?? '(missing)'}</span> was not found in this prototype dataset.
+          </div>
+
+          <div>
+            <Link to="/users" className="inline-flex items-center justify-center rounded-lg h-10 px-4 bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors">
+              <span className="material-symbols-outlined mr-2 text-sm">arrow_back</span>
+              Back to List
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const statusText = user.status === 'Active' ? 'ACTIVE' : 'SUSPENDED';
+
   return (
     <main className="flex flex-1 justify-center py-8">
       <div className="layout-content-container flex flex-col w-full max-w-[960px] px-4 md:px-10 gap-6">
@@ -13,8 +45,8 @@ const UserEditor: React.FC = () => {
 
         <div className="flex flex-wrap justify-between items-end gap-4">
           <div className="flex flex-col gap-1">
-            <h1 className="text-4xl font-black leading-tight tracking-tight text-slate-900 dark:text-slate-100">John Doe</h1>
-            <p className="text-slate-500 dark:text-slate-400 font-medium">ID: #USR-4421</p>
+            <h1 className="text-4xl font-black leading-tight tracking-tight text-slate-900 dark:text-slate-100">{user.fullName}</h1>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">ID: #USR-{user.id.padStart(4, '0')}</p>
           </div>
           <Link to="/users" className="flex items-center justify-center rounded-lg h-10 px-4 bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors">
             <span className="material-symbols-outlined mr-2 text-sm">arrow_back</span>
@@ -28,9 +60,9 @@ const UserEditor: React.FC = () => {
             <p className="text-slate-500 dark:text-slate-400 text-sm">Currently active. Suspending will restrict user access to all platform features.</p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
-            <input defaultChecked className="sr-only peer" type="checkbox" />
+            <input defaultChecked={user.status === 'Active'} className="sr-only peer" type="checkbox" />
             <div className="w-14 h-7 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary"></div>
-            <span className="ml-3 text-sm font-bold text-primary">ACTIVE</span>
+            <span className="ml-3 text-sm font-bold text-primary">{statusText}</span>
           </label>
         </div>
 
@@ -42,15 +74,15 @@ const UserEditor: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Full Name</label>
-              <input className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary" type="text" defaultValue="John Doe" />
+              <input className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary" type="text" defaultValue={user.fullName} />
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Email Address</label>
-              <input className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary" type="email" defaultValue="john.doe@example.com" />
+              <input className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary" type="email" defaultValue={user.email} />
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Phone Number</label>
-              <input className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary" type="tel" defaultValue="+1 (555) 000-1234" />
+              <input className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary" type="tel" defaultValue={user.phone} />
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Address</label>
@@ -67,11 +99,11 @@ const UserEditor: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex justify-between items-center p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Join Date</span>
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">October 14, 2023</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{user.createdDate}</span>
             </div>
             <div className="flex justify-between items-center p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Last Login</span>
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">2 hours ago (14:32 PM)</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{user.lastLogin}</span>
             </div>
             <div className="flex justify-between items-center p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Membership Tier</span>

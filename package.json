@@ -7,12 +7,24 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:apply": "psql \"$DATABASE_URL\" -f db/schema.sql",
+    "db:import:activities": "node scripts/import-activities.mjs",
+    "db:local:up": "docker compose up -d postgres",
+    "db:local:down": "docker compose down",
+    "db:local:reset": "docker compose down -v",
+    "db:local:logs": "docker compose logs -f postgres",
+    "db:local:apply": "cat db/schema.sql | docker compose exec -T postgres psql -U fun_admin -d fun_admin",
+    "db:local:import:houston": "DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin node scripts/import-activities.mjs --file \"Funzinga Activity Database - 2026-0224.csv\" --city-code HOU",
+    "db:local:import:houston:dry-run": "DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin node scripts/import-activities.mjs --file \"Funzinga Activity Database - 2026-0224.csv\" --city-code HOU --dry-run",
+    "db:local:bootstrap:houston": "npm run db:local:up && npm run db:local:apply && npm run db:local:import:houston"
   },
   "dependencies": {
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.11",
     "autoprefixer": "^10.4.24",
+    "csv-parse": "^5.6.0",
+    "pg": "^8.16.3",
     "postcss": "^8.5.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -22,6 +34,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
+    "@types/pg": "^8.16.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

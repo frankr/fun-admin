@@ -21,8 +21,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <NavLink to="/users" className={({ isActive }) =>
                 `text-sm font-medium transition-colors ${isActive ? 'text-primary' : 'text-slate-600 dark:text-slate-400 hover:text-primary'}`
               }>Users</NavLink>
-              <a href="#" className="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">Reports</a>
-              <a href="#" className="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">Settings</a>
+              <NavLink to="/reports" className={({ isActive }) =>
+                `text-sm font-medium transition-colors ${isActive ? 'text-primary' : 'text-slate-600 dark:text-slate-400 hover:text-primary'}`
+              }>Reports</NavLink>
+              <NavLink to="/settings" className={({ isActive }) =>
+                `text-sm font-medium transition-colors ${isActive ? 'text-primary' : 'text-slate-600 dark:text-slate-400 hover:text-primary'}`
+              }>Settings</NavLink>
             </nav>
           </div>
           <div className="flex flex-1 justify-end gap-4 lg:gap-8 items-center">
