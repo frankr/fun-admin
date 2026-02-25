@@ -80,6 +80,33 @@ cd ~/funzilla/funzilla-app
 EXPO_HOST=tunnel EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run pm2:up
 ```
 
+## 4b) Auto-sync approved images from funcrawl
+
+Add one of the following to your stack startup:
+
+```bash
+cd ~/funzilla/fun-admin
+APPROVED_IMAGES_SYNC_URL="https://funcrawl.funzilla.app/api/export/approved-images.jsonl" \
+APPROVED_IMAGES_SYNC_BEARER_TOKEN="..." \
+APPROVED_IMAGES_SYNC_REQUIRED=1 \
+ADMIN_PORT=5173 \
+EXPO_PUBLIC_API_BASE_URL="https://admin.funzilla.app" \
+npm run pm2:up:stack
+```
+
+Optional variants:
+- keep a static file path instead of URL:
+
+```bash
+cd ~/funzilla/fun-admin
+APPROVED_IMAGES_FILE="/path/approved-images.jsonl" \
+ADMIN_PORT=5173 \
+EXPO_PUBLIC_API_BASE_URL="https://admin.funzilla.app" \
+npm run pm2:up:stack
+```
+
+`APPROVED_IMAGES_SYNC_URL` can be used together with `APPROVED_IMAGES_FILE`.
+
 ## 5) One command to bring up both services
 
 From `fun-admin`:
@@ -257,3 +284,95 @@ Safety checks after move:
 - Existing `funcrawl` image URLs still load in browser.
 - Admin pages still show approved images.
 - If needed, create a symlink from old path to new path during transition.
+
+## 12) Live Funzilla.app setup (current server state)
+
+This section documents the currently deployed hostnames and operational commands used on this server.
+
+### 12.1) Cloudflare DNS + tunnel hostnames
+
+Hostnames expected to route through Cloudflare Tunnel:
+- `admin.funzilla.app`
+- `funzilla.app`
+- `funcrawl.funzilla.app`
+
+Create DNS records in Cloudflare (zone: `funzilla.app`) as CNAMEs to your tunnel target:
+- `admin` -> `<tunnel-id>.cfargotunnel.com`
+- `@` -> `<tunnel-id>.cfargotunnel.com`
+- `funcrawl` -> `<tunnel-id>.cfargotunnel.com`
+
+Tunnel ingress config file on this server:
+- `/Users/kai/.cloudflared/config-lineage.yml`
+
+Apply tunnel config changes:
+
+```bash
+pm2 restart lineage-tunnel
+```
+
+If Chrome reports `ERR_NAME_NOT_RESOLVED`, it is client DNS cache (not app code). Flush OS and Chrome DNS caches.
+
+### 12.2) Admin auth behavior
+
+`fun-admin` now has password protection for web UI pages. The API is intentionally left open for mobile clients.
+
+Auth settings:
+- Env var: `ADMIN_PASSWORD` (fallback: `REVIEW_PASSWORD`)
+- Login path: `/_auth/login`
+- Login POST path: `/_auth/api/login`
+- Cookie: `admin_auth`
+- `/api/*` remains accessible without auth cookie (required for Expo/mobile app API calls)
+
+### 12.3) Admin port collisions
+
+If `5173` is already used by another service, run admin on a different free port and update tunnel ingress to match.
+
+Example used on this server:
+- `fun-admin` moved to `5178`
+- `admin.funzilla.app` tunnel ingress points to `http://127.0.0.1:5178`
+
+### 12.4) Restore DB from backup dump
+
+Place dump file under:
+- `~/funzilla/backups/`
+
+Restore command:
+
+```bash
+cd ~/funzilla/fun-admin
+BACKUP_FILE=~/funzilla/backups/fun_admin_YYYYMMDD_HHMMSS.dump npm run db:restore
+```
+
+### 12.5) CSV import fallback (when needed)
+
+If restore is not available and you need to load activities from CSV:
+
+```bash
+cd ~/funzilla/fun-admin
+DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin \
+npm run db:import:activities -- \
+  --file /absolute/path/to/Funzinga_Activity_Database.csv \
+  --city-code HOU
+```
+
+### 12.6) Persistent Expo tunnel mode (PM2)
+
+To keep Expo running in tunnel mode across reboots:
+
+```bash
+cd ~/funzilla/funzilla-app
+EXPO_HOST=tunnel EXPO_PORT=3018 EXPO_PUBLIC_API_BASE_URL="https://admin.funzilla.app" \
+pm2 restart funzilla-expo --update-env
+pm2 save
+pm2 startup
+```
+
+Get current share URL + QR output:
+
+```bash
+pm2 logs funzilla-expo --lines 120
+```
+
+Notes:
+- Expo tunnel URLs (`exp://...exp.direct`) can change if Expo process restarts.
+- For stable user-facing distribution, use EAS builds instead of Expo Go tunnel links.

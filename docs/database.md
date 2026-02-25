@@ -95,6 +95,28 @@ Activity readiness query:
 SELECT external_id, activity_name, approved_image_count, has_approved_images, has_full_image_set, ready_for_live
 FROM v_activity_readiness
 ORDER BY external_id;
+
+## Automatic sync during stack startup
+
+You can keep admin console in sync automatically when image review exports an endpoint that serves JSONL.
+
+Set one of:
+- `APPROVED_IMAGES_FILE` for a local file
+- `APPROVED_IMAGES_SYNC_URL` for a remote JSONL URL
+- both together for layered workflows (both imports run)
+
+Example:
+```bash
+APPROVED_IMAGES_SYNC_URL="https://funcrawl.funzilla.app/api/export/approved-images.jsonl" \
+APPROVED_IMAGES_SYNC_BEARER_TOKEN="..." \
+APPROVED_IMAGES_SYNC_REQUIRED=1 \
+ADMIN_PORT=5173 \
+EXPO_PUBLIC_API_BASE_URL="https://admin.funzilla.app" \
+npm run pm2:up:stack
+```
+
+`APPROVED_IMAGES_SYNC_REQUIRED=1` makes startup fail if remote sync cannot be fetched.
+If omitted, startup continues and logs a warning.
 ```
 
 ## Image storage recommendation

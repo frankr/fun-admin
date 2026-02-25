@@ -1,4 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { URL } from 'node:url'
 import { Pool } from 'pg'
 import { defineConfig } from 'vite'
@@ -7,6 +8,9 @@ import react from '@vitejs/plugin-react'
 
 const DEFAULT_DATABASE_URL = 'postgres://fun_admin:fun_admin@localhost:54329/fun_admin'
 const MIN_RECOMMENDED_IMAGES = 3
+const AUTH_COOKIE_NAME = 'admin_auth'
+const AUTH_LOGIN_PATH = '/_auth/login'
+const AUTH_LOGIN_POST_PATH = '/_auth/api/login'
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
@@ -91,6 +95,167 @@ function sendJson(res: ServerResponse, statusCode: number, payload: unknown): vo
   res.statusCode = statusCode
   res.setHeader('Content-Type', 'application/json')
   res.end(JSON.stringify(payload))
+}
+
+function parseCookieValue(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) {
+    return null
+  }
+
+  const items = cookieHeader.split(';')
+  for (const item of items) {
+    const [rawKey, ...rest] = item.trim().split('=')
+    if (rawKey !== name) {
+      continue
+    }
+    return decodeURIComponent(rest.join('='))
+  }
+
+  return null
+}
+
+function readRequestBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.setEncoding('utf8')
+    req.on('data', (chunk) => {
+      body += chunk
+      if (body.length > 16_384) {
+        reject(new Error('Request body too large'))
+      }
+    })
+    req.on('end', () => resolve(body))
+    req.on('error', reject)
+  })
+}
+
+function expectedAuthToken(password: string): string {
+  return createHmac('sha256', password).update('authenticated').digest('hex')
+}
+
+function isAuthorized(token: string | null, expectedToken: string): boolean {
+  if (!token) {
+    return false
+  }
+
+  const providedBuffer = Buffer.from(token, 'utf8')
+  const expectedBuffer = Buffer.from(expectedToken, 'utf8')
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false
+  }
+  return timingSafeEqual(providedBuffer, expectedBuffer)
+}
+
+function loginHtml(errorMessage: string | null): string {
+  const errorBlock = errorMessage
+    ? `<p style="margin:0 0 16px;color:#fca5a5;font:600 14px/1.4 system-ui,sans-serif;">${errorMessage}</p>`
+    : ''
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Funzilla Admin Login</title>
+  </head>
+  <body style="margin:0;min-height:100vh;background:#020617;color:#e2e8f0;display:flex;align-items:center;justify-content:center;padding:24px;">
+    <main style="width:100%;max-width:420px;border:1px solid #334155;border-radius:20px;background:#0f172a;padding:24px;">
+      <h1 style="margin:0 0 8px;font:800 28px/1.2 system-ui,sans-serif;color:#f8fafc;">Funzilla Admin</h1>
+      <p style="margin:0 0 18px;color:#94a3b8;font:500 14px/1.5 system-ui,sans-serif;">Enter password to continue.</p>
+      ${errorBlock}
+      <form method="post" action="${AUTH_LOGIN_POST_PATH}">
+        <input name="next" type="hidden" value="__NEXT__" />
+        <label style="display:block;margin-bottom:8px;font:600 14px/1.4 system-ui,sans-serif;">Password</label>
+        <input name="password" type="password" required style="box-sizing:border-box;width:100%;border:1px solid #475569;border-radius:12px;background:#020617;color:#f8fafc;padding:12px 14px;margin:0 0 14px;font:500 14px/1.2 system-ui,sans-serif;" />
+        <button type="submit" style="width:100%;border:0;border-radius:12px;padding:12px 14px;background:#0ea5e9;color:#fff;font:700 14px/1.2 system-ui,sans-serif;cursor:pointer;">Log in</button>
+      </form>
+    </main>
+  </body>
+</html>`
+}
+
+function attachAuthMiddleware(server: {
+  middlewares: {
+    use: (handler: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void
+  }
+}): void {
+    server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+      const password = process.env.ADMIN_PASSWORD ?? process.env.REVIEW_PASSWORD
+      if (!password) {
+        next()
+        return
+      }
+
+      const parsed = new URL(req.url ?? '/', 'http://localhost')
+      const requestPath = parsed.pathname
+      const expectedToken = expectedAuthToken(password)
+
+      // Keep admin UI protected, but allow public API access for mobile clients.
+      if (requestPath === '/api' || requestPath.startsWith('/api/')) {
+        next()
+        return
+      }
+
+      if (requestPath === AUTH_LOGIN_PATH && req.method === 'GET') {
+        const requestedNext = parsed.searchParams.get('next') ?? '/'
+        const safeNext = requestedNext.startsWith('/') ? requestedNext : '/'
+        const errorMessage = parsed.searchParams.get('error') === '1' ? 'Wrong password' : null
+
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'text/html; charset=utf-8')
+        res.end(loginHtml(errorMessage).replace('__NEXT__', safeNext))
+        return
+      }
+
+      if (requestPath === AUTH_LOGIN_POST_PATH && req.method === 'POST') {
+        try {
+          const body = await readRequestBody(req)
+          const form = new URLSearchParams(body)
+          const submittedPassword = form.get('password') ?? ''
+          const requestedNext = form.get('next') ?? '/'
+          const safeNext = requestedNext.startsWith('/') ? requestedNext : '/'
+
+          if (submittedPassword !== password) {
+            res.statusCode = 302
+            res.setHeader('Location', `${AUTH_LOGIN_PATH}?error=1&next=${encodeURIComponent(safeNext)}`)
+            res.end()
+            return
+          }
+
+          res.statusCode = 302
+          res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=${expectedToken}; Path=/; HttpOnly; SameSite=Lax`)
+          res.setHeader('Location', safeNext)
+          res.end()
+          return
+        } catch {
+          res.statusCode = 400
+          res.end('Invalid request')
+          return
+        }
+      }
+
+      if (requestPath === AUTH_LOGIN_PATH || requestPath === AUTH_LOGIN_POST_PATH) {
+        res.statusCode = 405
+        res.end('Method not allowed')
+        return
+      }
+
+      const providedToken = parseCookieValue(req.headers.cookie, AUTH_COOKIE_NAME)
+      if (isAuthorized(providedToken, expectedToken)) {
+        next()
+        return
+      }
+
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        const nextPath = `${requestPath}${parsed.search}`
+        res.statusCode = 302
+        res.setHeader('Location', `${AUTH_LOGIN_PATH}?next=${encodeURIComponent(nextPath)}`)
+        res.end()
+        return
+      }
+
+      sendJson(res, 401, { message: 'Unauthorized' })
+    })
 }
 
 async function getDashboard(cityCode: string): Promise<DashboardResponse | null> {
@@ -603,9 +768,11 @@ function createDevApiPlugin(): Plugin {
   return {
     name: 'fun-admin-dev-api',
     configureServer(server) {
+      attachAuthMiddleware(server)
       attachApiMiddleware(server)
     },
     configurePreviewServer(server) {
+      attachAuthMiddleware(server)
       attachApiMiddleware(server)
     },
   }

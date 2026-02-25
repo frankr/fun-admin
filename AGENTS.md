@@ -118,5 +118,6 @@ Do not change the public `funcrawl` base URL unless DNS/proxy is updated at the 
 
 ## Source of truth docs
 - Deployment runbook: `docs/server-pm2-deployment.md`
+- Live domain/tunnel/auth specifics: `docs/server-pm2-deployment.md` section "12) Live Funzilla.app setup (current server state)"
 - Production checklist: `docs/production-readiness.md`
 - DB schema/import notes: `docs/database.md`
