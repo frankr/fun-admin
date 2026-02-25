@@ -22,8 +22,8 @@ Optional but supported by scripts:
 ## 2) Clone repositories on server
 
 ```bash
-mkdir -p ~/apps
-cd ~/apps
+mkdir -p ~/funzilla
+cd ~/funzilla
 git clone https://github.com/frankr/fun-admin.git
 git clone https://github.com/frankr/funzilla-app.git
 ```
@@ -33,7 +33,7 @@ git clone https://github.com/frankr/funzilla-app.git
 From `fun-admin`:
 
 ```bash
-cd ~/apps/fun-admin
+cd ~/funzilla/fun-admin
 npm run pm2:up
 ```
 
@@ -48,7 +48,7 @@ What this script does:
 Optional first-time seed during deploy:
 
 ```bash
-cd ~/apps/fun-admin
+cd ~/funzilla/fun-admin
 CSV_FILE="/path/Funzinga Activity Database - 2026-0224.csv" \
 APPROVED_IMAGES_FILE="/path/approved-images-2026-02-25.jsonl" \
 FUNCRAWL_BASE_URL="https://funcrawl.buildwithspark.com" \
@@ -60,7 +60,7 @@ npm run pm2:up
 From `funzilla-app`:
 
 ```bash
-cd ~/apps/funzilla-app
+cd ~/funzilla/funzilla-app
 EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run pm2:up
 ```
 
@@ -73,7 +73,7 @@ What this script does:
 Default Expo host mode is `lan`. To run with tunnel:
 
 ```bash
-cd ~/apps/funzilla-app
+cd ~/funzilla/funzilla-app
 EXPO_HOST=tunnel EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run pm2:up
 ```
 
@@ -82,7 +82,7 @@ EXPO_HOST=tunnel EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run
 From `fun-admin`:
 
 ```bash
-cd ~/apps/fun-admin
+cd ~/funzilla/fun-admin
 EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run pm2:up:stack
 ```
 
@@ -123,7 +123,7 @@ server {
 }
 ```
 
-If `ADMIN_PORT` is dynamic, read it from `~/apps/fun-admin/.env.server` and update proxy config accordingly.
+If `ADMIN_PORT` is dynamic, read it from `~/funzilla/fun-admin/.env.server` and update proxy config accordingly.
 
 ### Nginx example for Expo (optional, dev only)
 
@@ -160,3 +160,23 @@ pm2 logs fun-admin
 pm2 logs funzilla-expo
 pm2 save
 ```
+
+## 10) Optional: move `fun-crawl` under the same parent directory
+
+If `fun-crawl` currently runs and serves images correctly, move it only during a maintenance window.
+
+Suggested process:
+
+```bash
+# example only, adjust service name/path to your current setup
+pm2 stop fun-crawl
+mkdir -p ~/funzilla
+mv /current/path/fun-crawl ~/funzilla/fun-crawl
+pm2 start ~/funzilla/fun-crawl/<your-start-command> --name fun-crawl
+pm2 save
+```
+
+Safety checks after move:
+- Existing `funcrawl` image URLs still load in browser.
+- Admin pages still show approved images.
+- If needed, create a symlink from old path to new path during transition.

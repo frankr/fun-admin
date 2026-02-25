@@ -1,6 +1,7 @@
 # React + TypeScript + Vite
 
 ## Funzinga admin quick links
+- Codex operator instructions: `AGENTS.md`
 - Server deployment runbook (PM2 + Portman + Cloudflare): `docs/server-pm2-deployment.md`
 - Database model and import workflow: `docs/database.md`
 - Production readiness checklist: `docs/production-readiness.md`
