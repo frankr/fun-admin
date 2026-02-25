@@ -1,5 +1,14 @@
 # React + TypeScript + Vite
 
+## Funzinga admin quick links
+- Server deployment runbook (PM2 + Portman + Cloudflare): `docs/server-pm2-deployment.md`
+- Database model and import workflow: `docs/database.md`
+- Production readiness checklist: `docs/production-readiness.md`
+
+## PM2 commands added
+- `npm run pm2:up` starts/updates admin service + local Postgres container + schema apply.
+- `npm run pm2:up:stack` starts admin, then starts `funzilla-app` Expo service (expects sibling repo).
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

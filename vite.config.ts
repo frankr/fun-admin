@@ -515,82 +515,98 @@ async function getActivityDetail(
 }
 
 function createDevApiPlugin(): Plugin {
-  return {
-    name: 'fun-admin-dev-api',
-    configureServer(server) {
-      server.middlewares.use('/api', async (req: IncomingMessage, res: ServerResponse, next) => {
-        if (req.method !== 'GET') {
-          next()
+  const attachApiMiddleware = (
+    server: {
+      middlewares: {
+        use: (
+          path: string,
+          handler: (req: IncomingMessage, res: ServerResponse, next: () => void) => void,
+        ) => void
+      }
+    },
+  ): void => {
+    server.middlewares.use('/api', async (req: IncomingMessage, res: ServerResponse, next) => {
+      if (req.method !== 'GET') {
+        next()
+        return
+      }
+
+      const parsed = new URL(req.url ?? '/', 'http://localhost')
+      const cityCode = (parsed.searchParams.get('city') ?? 'HOU').toUpperCase()
+
+      try {
+        if (parsed.pathname === '/dashboard') {
+          const dashboard = await getDashboard(cityCode)
+
+          if (!dashboard) {
+            sendJson(res, 404, {
+              message: `City ${cityCode} not found or has no active activities.`,
+            })
+            return
+          }
+
+          sendJson(res, 200, dashboard)
           return
         }
 
-        const parsed = new URL(req.url ?? '/', 'http://localhost')
-        const cityCode = (parsed.searchParams.get('city') ?? 'HOU').toUpperCase()
+        if (parsed.pathname === '/activities') {
+          const page = Number(parsed.searchParams.get('page') ?? '1')
+          const pageSize = Number(parsed.searchParams.get('pageSize') ?? '25')
+          const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
+          const safePageSize =
+            Number.isFinite(pageSize) && pageSize > 0 && pageSize <= 100
+              ? Math.floor(pageSize)
+              : 25
 
-        try {
-          if (parsed.pathname === '/dashboard') {
-            const dashboard = await getDashboard(cityCode)
+          const search = parsed.searchParams.get('search') ?? ''
+          const rawFilter = parsed.searchParams.get('status') ?? 'all'
+          const statusFilter =
+            rawFilter === 'ready' || rawFilter === 'needs_review' || rawFilter === 'attention'
+              ? rawFilter
+              : 'all'
 
-            if (!dashboard) {
-              sendJson(res, 404, {
-                message: `City ${cityCode} not found or has no active activities.`,
-              })
-              return
-            }
-
-            sendJson(res, 200, dashboard)
-            return
-          }
-
-          if (parsed.pathname === '/activities') {
-            const page = Number(parsed.searchParams.get('page') ?? '1')
-            const pageSize = Number(parsed.searchParams.get('pageSize') ?? '25')
-            const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
-            const safePageSize =
-              Number.isFinite(pageSize) && pageSize > 0 && pageSize <= 100
-                ? Math.floor(pageSize)
-                : 25
-
-            const search = parsed.searchParams.get('search') ?? ''
-            const rawFilter = parsed.searchParams.get('status') ?? 'all'
-            const statusFilter =
-              rawFilter === 'ready' || rawFilter === 'needs_review' || rawFilter === 'attention'
-                ? rawFilter
-                : 'all'
-
-            const activities = await getActivities(
-              cityCode,
-              search,
-              statusFilter,
-              safePage,
-              safePageSize,
-            )
-            sendJson(res, 200, activities)
-            return
-          }
-
-          const pathParts = parsed.pathname.split('/').filter(Boolean)
-          if (pathParts[0] === 'activities' && pathParts.length === 2) {
-            const externalId = decodeURIComponent(pathParts[1]).toUpperCase()
-            const activity = await getActivityDetail(cityCode, externalId)
-
-            if (!activity) {
-              sendJson(res, 404, {
-                message: `Activity ${externalId} was not found in city ${cityCode}.`,
-              })
-              return
-            }
-
-            sendJson(res, 200, activity)
-            return
-          }
-
-          next()
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown API error'
-          sendJson(res, 500, { message })
+          const activities = await getActivities(
+            cityCode,
+            search,
+            statusFilter,
+            safePage,
+            safePageSize,
+          )
+          sendJson(res, 200, activities)
+          return
         }
-      })
+
+        const pathParts = parsed.pathname.split('/').filter(Boolean)
+        if (pathParts[0] === 'activities' && pathParts.length === 2) {
+          const externalId = decodeURIComponent(pathParts[1]).toUpperCase()
+          const activity = await getActivityDetail(cityCode, externalId)
+
+          if (!activity) {
+            sendJson(res, 404, {
+              message: `Activity ${externalId} was not found in city ${cityCode}.`,
+            })
+            return
+          }
+
+          sendJson(res, 200, activity)
+          return
+        }
+
+        next()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown API error'
+        sendJson(res, 500, { message })
+      }
+    })
+  }
+
+  return {
+    name: 'fun-admin-dev-api',
+    configureServer(server) {
+      attachApiMiddleware(server)
+    },
+    configurePreviewServer(server) {
+      attachApiMiddleware(server)
     },
   }
 }
