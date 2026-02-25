@@ -695,6 +695,7 @@ async function getActivities(
       AND (
         $2::text IS NULL
         OR a.name ILIKE $2
+        OR a.external_id ILIKE $2
         OR COALESCE(loc.address_raw, '') ILIKE $2
       )
       AND (
@@ -786,6 +787,7 @@ async function getActivities(
       AND (
         $2::text IS NULL
         OR a.name ILIKE $2
+        OR a.external_id ILIKE $2
         OR COALESCE(loc.address_raw, '') ILIKE $2
       )
       AND (
