@@ -72,6 +72,48 @@ resolve_compose_cmd() {
   return 1
 }
 
+ensure_postgres_with_docker_only() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker is not available; cannot bootstrap Postgres automatically."
+    return 1
+  fi
+
+  local container_name="fun_admin_postgres"
+  local image_name="postgres:16-alpine"
+  local container_exists
+  container_exists="$(docker ps -a --format '{{.Names}}' | grep -x "$container_name" || true)"
+
+  if [[ -n "$container_exists" ]]; then
+    echo "[fun-admin] starting existing Postgres container: $container_name"
+    docker start "$container_name" >/dev/null || true
+  else
+    echo "[fun-admin] creating Postgres container: $container_name"
+    docker run -d \
+      --name "$container_name" \
+      --restart unless-stopped \
+      -e POSTGRES_USER=fun_admin \
+      -e POSTGRES_PASSWORD=fun_admin \
+      -e POSTGRES_DB=fun_admin \
+      -p 54329:5432 \
+      -v fun_admin_postgres_data:/var/lib/postgresql/data \
+      "$image_name" >/dev/null
+  fi
+
+  echo "[fun-admin] waiting for Postgres readiness"
+  local retries=30
+  local attempt=1
+  while (( attempt <= retries )); do
+    if docker exec "$container_name" pg_isready -U fun_admin -d fun_admin >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+
+  echo "Postgres container did not become ready in time."
+  return 1
+}
+
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -105,17 +147,17 @@ npm ci
 
 COMPOSE_SELECTOR="$(resolve_compose_cmd || true)"
 if [[ -z "$COMPOSE_SELECTOR" ]]; then
-  echo "Neither 'docker compose' nor 'docker-compose' is available."
-  echo "Install Docker Compose support, or start Postgres manually before running this script."
-  exit 1
-fi
-IFS='|' read -r COMPOSE_BIN COMPOSE_SUBCMD <<< "$COMPOSE_SELECTOR"
-if [[ -n "$COMPOSE_SUBCMD" ]]; then
-  echo "[fun-admin] ensuring Postgres container is up using: $COMPOSE_BIN $COMPOSE_SUBCMD"
-  "$COMPOSE_BIN" "$COMPOSE_SUBCMD" up -d postgres
+  echo "[fun-admin] compose tooling not found; using docker-only Postgres bootstrap."
+  ensure_postgres_with_docker_only
 else
-  echo "[fun-admin] ensuring Postgres container is up using: $COMPOSE_BIN"
-  "$COMPOSE_BIN" up -d postgres
+  IFS='|' read -r COMPOSE_BIN COMPOSE_SUBCMD <<< "$COMPOSE_SELECTOR"
+  if [[ -n "$COMPOSE_SUBCMD" ]]; then
+    echo "[fun-admin] ensuring Postgres container is up using: $COMPOSE_BIN $COMPOSE_SUBCMD"
+    "$COMPOSE_BIN" "$COMPOSE_SUBCMD" up -d postgres
+  else
+    echo "[fun-admin] ensuring Postgres container is up using: $COMPOSE_BIN"
+    "$COMPOSE_BIN" up -d postgres
+  fi
 fi
 
 echo "[fun-admin] applying schema"
