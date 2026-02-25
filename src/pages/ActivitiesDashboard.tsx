@@ -4,8 +4,9 @@ import { Link } from 'react-router-dom';
 type DashboardData = {
   totalActivities: number;
   newThisWeek: number;
-  activeLocations: number;
+  liveLocations: number;
   openIssues: number;
+  readyForLive: number;
 };
 
 type ActivityListItem = {
@@ -13,8 +14,12 @@ type ActivityListItem = {
   name: string;
   location: string | null;
   websiteUrl: string | null;
+  heroImageUrl: string | null;
   category: string;
   status: 'active' | 'inactive';
+  approvedImageCount: number;
+  hasFullImageSet: boolean;
+  readyForLive: boolean;
 };
 
 type ActivitiesResponse = {
@@ -23,6 +28,8 @@ type ActivitiesResponse = {
   total: number;
   items: ActivityListItem[];
 };
+
+type StatusFilter = 'all' | 'ready' | 'needs_review';
 
 const CITY_CODE = 'HOU';
 const PAGE_SIZE = 25;
@@ -34,6 +41,8 @@ const ActivitiesDashboard: React.FC = () => {
   const [activities, setActivities] = useState<ActivitiesResponse | null>(null);
   const [queryInput, setQueryInput] = useState('');
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [imageLoadErrors, setImageLoadErrors] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +94,7 @@ const ActivitiesDashboard: React.FC = () => {
       page: String(page),
       pageSize: String(PAGE_SIZE),
       search: query,
+      status: statusFilter,
     });
 
     const loadActivities = async () => {
@@ -116,7 +126,7 @@ const ActivitiesDashboard: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [page, query]);
+  }, [page, query, statusFilter]);
 
   const totalItems = activities?.total ?? 0;
   const currentPage = activities?.page ?? page;
@@ -192,9 +202,9 @@ const ActivitiesDashboard: React.FC = () => {
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Active Locations</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Live Locations</p>
               <h3 className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">
-                {numberFormatter.format(dashboard?.activeLocations ?? 0)}
+                {numberFormatter.format(dashboard?.liveLocations ?? 0)}
               </h3>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
@@ -202,7 +212,9 @@ const ActivitiesDashboard: React.FC = () => {
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2">
-            <span className="text-xs text-slate-400">Primary addresses stored</span>
+            <span className="text-xs text-slate-400">
+              From activities marked ready for live
+            </span>
           </div>
         </div>
       </div>
@@ -218,10 +230,23 @@ const ActivitiesDashboard: React.FC = () => {
             onChange={(event) => setQueryInput(event.target.value)}
           />
         </div>
-        <button className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-          <span className="material-symbols-outlined text-lg">filter_list</span>
-          Filters
-        </button>
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          <span className="material-symbols-outlined text-lg text-slate-400">filter_list</span>
+          <label className="sr-only" htmlFor="status-filter">Status Filter</label>
+          <select
+            id="status-filter"
+            className="bg-transparent pr-6 text-sm font-medium text-slate-700 outline-none dark:text-slate-200"
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as StatusFilter);
+              setPage(1);
+            }}
+          >
+            <option value="all">All statuses</option>
+            <option value="ready">Ready for Live</option>
+            <option value="needs_review">Needs Review</option>
+          </select>
+        </div>
       </div>
 
       {error ? (
@@ -275,7 +300,21 @@ const ActivitiesDashboard: React.FC = () => {
                         className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-primary/10 hover:text-primary dark:bg-slate-800 dark:text-slate-200"
                         aria-label={`Open ${activity.name}`}
                       >
-                        {activity.name.charAt(0).toUpperCase()}
+                        {activity.heroImageUrl && !imageLoadErrors[activity.externalId] ? (
+                          <img
+                            src={activity.heroImageUrl}
+                            alt={`${activity.name} preview`}
+                            className="h-10 w-10 rounded-lg object-cover"
+                            onError={() =>
+                              setImageLoadErrors((previous) => ({
+                                ...previous,
+                                [activity.externalId]: true,
+                              }))
+                            }
+                          />
+                        ) : (
+                          activity.name.charAt(0).toUpperCase()
+                        )}
                       </Link>
                       <div className="flex flex-col">
                         <Link
@@ -302,12 +341,24 @@ const ActivitiesDashboard: React.FC = () => {
                     <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                       {activity.category}
                     </span>
+                    <p className="mt-1 text-xs text-slate-500">{activity.approvedImageCount}/5 approved images</p>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-600"></span>
+                    {activity.readyForLive ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-600"></span>
+                        Ready for Live
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-600"></span>
+                        Needs Review
+                      </span>
+                    )}
+                    <p className="mt-1 text-xs text-slate-500">
                       {activity.status === 'active' ? 'Active' : 'Inactive'}
-                    </span>
+                      {activity.hasFullImageSet ? ' · Full image set' : ' · Partial image set'}
+                    </p>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "db:apply": "psql \"$DATABASE_URL\" -f db/schema.sql",
     "db:import:activities": "node scripts/import-activities.mjs",
+    "db:import:approved-images": "node scripts/import-approved-images.mjs",
     "db:local:up": "docker compose up -d postgres",
     "db:local:down": "docker compose down",
     "db:local:reset": "docker compose down -v",
@@ -17,6 +18,8 @@
     "db:local:apply": "cat db/schema.sql | docker compose exec -T postgres psql -U fun_admin -d fun_admin",
     "db:local:import:houston": "DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin node scripts/import-activities.mjs --file \"Funzinga Activity Database - 2026-0224.csv\" --city-code HOU",
     "db:local:import:houston:dry-run": "DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin node scripts/import-activities.mjs --file \"Funzinga Activity Database - 2026-0224.csv\" --city-code HOU --dry-run",
+    "db:local:import:approved-images": "DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin node scripts/import-approved-images.mjs --file \"approved-images-2026-02-25.jsonl\" --funcrawl-base-url \"https://funcrawl.buildwithspark.com\"",
+    "db:local:import:approved-images:dry-run": "DATABASE_URL=postgres://fun_admin:fun_admin@localhost:54329/fun_admin node scripts/import-approved-images.mjs --file \"approved-images-2026-02-25.jsonl\" --funcrawl-base-url \"https://funcrawl.buildwithspark.com\" --dry-run",
     "db:local:bootstrap:houston": "npm run db:local:up && npm run db:local:apply && npm run db:local:import:houston"
   },
   "dependencies": {

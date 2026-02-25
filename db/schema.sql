@@ -159,16 +159,28 @@ CREATE TABLE IF NOT EXISTS activity_images (
   rank_order SMALLINT NOT NULL,
   storage_provider TEXT,
   storage_key TEXT,
+  source_filename TEXT,
   public_url TEXT,
   width_px INTEGER,
   height_px INTEGER,
+  review_classification TEXT,
   alt_text TEXT,
+  approved_at TIMESTAMPTZ,
   status image_status NOT NULL DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (activity_id, rank_order),
   CHECK (rank_order >= 1 AND rank_order <= 5)
 );
+
+ALTER TABLE activity_images
+  ADD COLUMN IF NOT EXISTS source_filename TEXT;
+
+ALTER TABLE activity_images
+  ADD COLUMN IF NOT EXISTS review_classification TEXT;
+
+ALTER TABLE activity_images
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS import_row_results (
   id BIGSERIAL PRIMARY KEY,
@@ -243,6 +255,7 @@ CREATE INDEX IF NOT EXISTS ix_activities_external_id ON activities(external_id);
 CREATE INDEX IF NOT EXISTS ix_import_warnings_activity ON import_warnings(activity_id);
 CREATE INDEX IF NOT EXISTS ix_activity_data_issues_activity_status ON activity_data_issues(activity_id, status);
 CREATE INDEX IF NOT EXISTS ix_activity_change_log_activity_changed_at ON activity_change_log(activity_id, changed_at DESC);
+CREATE INDEX IF NOT EXISTS ix_activity_images_status ON activity_images(status);
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -432,5 +445,53 @@ FROM activity_data_issues i
 JOIN activities a ON a.id = i.activity_id
 JOIN cities c ON c.id = a.city_id
 WHERE i.status = 'open';
+
+CREATE OR REPLACE VIEW v_activity_readiness AS
+SELECT
+  a.id AS activity_id,
+  a.external_id,
+  c.code AS city_code,
+  a.name AS activity_name,
+  a.status AS activity_status,
+  (
+    a.description IS NOT NULL
+    AND btrim(a.description) <> ''
+    AND EXISTS (
+      SELECT 1
+      FROM activity_locations al
+      WHERE al.activity_id = a.id
+        AND al.is_primary = TRUE
+    )
+  ) AS has_required_content,
+  COALESCE(img.total_images, 0) AS total_image_slots,
+  COALESCE(img.ready_images, 0) AS approved_image_count,
+  COALESCE(img.pending_images, 0) AS pending_image_count,
+  (COALESCE(img.ready_images, 0) > 0) AS has_approved_images,
+  (COALESCE(img.ready_images, 0) >= 5) AS has_full_image_set,
+  (
+    (
+      a.description IS NOT NULL
+      AND btrim(a.description) <> ''
+      AND EXISTS (
+        SELECT 1
+        FROM activity_locations al
+        WHERE al.activity_id = a.id
+          AND al.is_primary = TRUE
+      )
+    )
+    AND COALESCE(img.ready_images, 0) > 0
+    AND a.status = 'active'
+  ) AS ready_for_live
+FROM activities a
+JOIN cities c ON c.id = a.city_id
+LEFT JOIN (
+  SELECT
+    ai.activity_id,
+    COUNT(*)::int AS total_images,
+    COUNT(*) FILTER (WHERE ai.status = 'ready')::int AS ready_images,
+    COUNT(*) FILTER (WHERE ai.status = 'pending')::int AS pending_images
+  FROM activity_images ai
+  GROUP BY ai.activity_id
+) img ON img.activity_id = a.id;
 
 COMMIT;

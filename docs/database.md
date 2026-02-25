@@ -54,6 +54,8 @@ Shortcuts for local Docker DB:
 ```bash
 npm run db:local:import:houston:dry-run
 npm run db:local:import:houston
+npm run db:local:import:approved-images:dry-run
+npm run db:local:import:approved-images
 npm run db:local:bootstrap:houston
 ```
 
@@ -73,6 +75,27 @@ npm run db:local:reset
 - Logs warnings in `import_warnings`.
 - Creates/updates open review issues in `activity_data_issues` when manual review is needed.
 - Replaces locations, age groups, and activity types per imported row so source-of-truth stays aligned.
+
+## Approved image sync (from fun-crawl export)
+Import approved image JSONL from the image review app:
+```bash
+npm run db:import:approved-images -- --file "approved-images-2026-02-25.jsonl" --funcrawl-base-url "https://funcrawl.buildwithspark.com"
+```
+
+What this sync does:
+- Matches each JSONL row by `activity_id` → `activities.external_id`.
+- Updates `activity_images` ranks `1..5` with `status='ready'` and review metadata.
+- Resets stale image slots back to `pending` when not present in the latest export.
+- Opens/resolves image issues in `activity_data_issues` (no approved images, >5 images supplied).
+- Persists `public_url` when provided by export (`image_url`) or builds it from `--funcrawl-base-url`.
+- Supports legacy JSONL exports without `slug` by inferring slug from URL/filenames.
+
+Activity readiness query:
+```sql
+SELECT external_id, activity_name, approved_image_count, has_approved_images, has_full_image_set, ready_for_live
+FROM v_activity_readiness
+ORDER BY external_id;
+```
 
 ## Image storage recommendation
 Store image files in object storage (S3/R2/GCS/Supabase Storage), not in Postgres.

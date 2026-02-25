@@ -9,12 +9,15 @@ What is complete:
 - Postgres schema is implemented and tested locally.
 - Houston CSV import pipeline works with upsert, warnings, and issue tracking.
 - Five ranked image slots are auto-created per activity.
+- Approved image JSONL sync from `fun-crawl` updates image status/readiness in admin DB.
+- Admin API returns first approved image URL per activity when available.
 
 What blocks production go-live:
 - No production API layer for mobile/admin traffic yet.
 - No production hosting/deployment for Postgres and backend.
 - No auth/authorization policy implementation.
 - No monitoring/alerting/backup runbooks configured.
+- Image CDN/object-storage strategy is not finalized (currently POC local/`fun-crawl` serving).
 
 ## 1. Data model and quality
 - [x] Activities schema and joins (locations, age groups, activity types).
