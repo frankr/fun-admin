@@ -12,6 +12,8 @@
     "start:pm2": "npm run build && npm run serve:pm2",
     "pm2:up": "bash scripts/server/pm2-up-admin.sh",
     "pm2:up:stack": "bash scripts/server/pm2-up-stack.sh",
+    "db:backup": "bash scripts/server/db-backup.sh",
+    "db:restore": "bash scripts/server/db-restore.sh",
     "db:apply": "psql \"$DATABASE_URL\" -f db/schema.sql",
     "db:import:activities": "node scripts/import-activities.mjs",
     "db:import:approved-images": "node scripts/import-approved-images.mjs",

@@ -164,7 +164,50 @@ pm2 logs funzilla-expo
 pm2 save
 ```
 
-## 10) Optional: move `fun-crawl` under the same parent directory
+## 10) Database backup / restore with SCP
+
+Create backup on source server:
+
+```bash
+cd ~/funzilla/fun-admin
+BACKUP_DIR=~/funzilla/backups npm run db:backup
+```
+
+This creates:
+- `~/funzilla/backups/fun_admin_<timestamp>.dump`
+- `~/funzilla/backups/fun_admin_<timestamp>.dump.sha256`
+
+Copy backup file with `scp`:
+
+```bash
+scp user@source-server:~/funzilla/backups/fun_admin_YYYYMMDD_HHMMSS.dump \
+  user@target-server:~/funzilla/backups/
+scp user@source-server:~/funzilla/backups/fun_admin_YYYYMMDD_HHMMSS.dump.sha256 \
+  user@target-server:~/funzilla/backups/
+```
+
+Optional checksum verify on target:
+
+```bash
+cd ~/funzilla/backups
+shasum -a 256 -c fun_admin_YYYYMMDD_HHMMSS.dump.sha256
+```
+
+Restore on target server:
+
+```bash
+cd ~/funzilla/fun-admin
+BACKUP_FILE=~/funzilla/backups/fun_admin_YYYYMMDD_HHMMSS.dump npm run db:restore
+```
+
+Then start/update services:
+
+```bash
+cd ~/funzilla/fun-admin
+ADMIN_PORT=5173 EXPO_PUBLIC_API_BASE_URL="https://admin.yourdomain.com" npm run pm2:up:stack
+```
+
+## 11) Optional: move `fun-crawl` under the same parent directory
 
 If `fun-crawl` currently runs and serves images correctly, move it only during a maintenance window.
 

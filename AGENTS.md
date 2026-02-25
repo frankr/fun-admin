@@ -56,6 +56,22 @@ pm2 restart funzilla-expo --update-env
 pm2 save
 ```
 
+## DB migration between servers (recommended)
+
+Use backup/restore scripts instead of rebuilding from CSV when you want exact data state:
+
+```bash
+cd ~/funzilla/fun-admin
+BACKUP_DIR=~/funzilla/backups npm run db:backup
+```
+
+Then `scp` the `.dump` and `.sha256` to target server, and restore:
+
+```bash
+cd ~/funzilla/fun-admin
+BACKUP_FILE=~/funzilla/backups/<dump-file>.dump npm run db:restore
+```
+
 ## Safe `fun-crawl` move (do not break image serving)
 
 If `fun-crawl` already serves images correctly, prefer leaving it in place until a maintenance window.
