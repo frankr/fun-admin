@@ -38,7 +38,10 @@ docker exec \
   -d "$POSTGRES_DB_NAME" \
   -Fc > "$BACKUP_PATH"
 
-shasum -a 256 "$BACKUP_PATH" > "${BACKUP_PATH}.sha256"
+(
+  cd "$BACKUP_DIR"
+  shasum -a 256 "$BACKUP_BASENAME" > "${BACKUP_BASENAME}.sha256"
+)
 
 echo "[db-backup] completed"
 echo "  dump: $BACKUP_PATH"
