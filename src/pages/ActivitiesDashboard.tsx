@@ -20,6 +20,10 @@ type ActivityListItem = {
   approvedImageCount: number;
   hasFullImageSet: boolean;
   readyForLive: boolean;
+  openIssueCount: number;
+  hasLocationQualityIssue: boolean;
+  belowRecommendedImages: boolean;
+  needsAttention: boolean;
 };
 
 type ActivitiesResponse = {
@@ -29,23 +33,45 @@ type ActivitiesResponse = {
   items: ActivityListItem[];
 };
 
-type StatusFilter = 'all' | 'ready' | 'needs_review';
+type StatusFilter = 'all' | 'ready' | 'needs_review' | 'attention';
 
 const CITY_CODE = 'HOU';
 const PAGE_SIZE = 25;
+const STATUS_FILTER_STORAGE_KEY = 'fun_admin.activities.status_filter';
+const MIN_RECOMMENDED_IMAGES = 3;
 
 const numberFormatter = new Intl.NumberFormat('en-US');
+
+function parseStatusFilter(value: string | null): StatusFilter {
+  if (value === 'ready' || value === 'needs_review' || value === 'attention') {
+    return value;
+  }
+  return 'all';
+}
+
+function getInitialStatusFilter(): StatusFilter {
+  if (typeof window === 'undefined') {
+    return 'all';
+  }
+
+  const stored = window.localStorage.getItem(STATUS_FILTER_STORAGE_KEY);
+  return parseStatusFilter(stored);
+}
 
 const ActivitiesDashboard: React.FC = () => {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [activities, setActivities] = useState<ActivitiesResponse | null>(null);
   const [queryInput, setQueryInput] = useState('');
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(getInitialStatusFilter);
   const [imageLoadErrors, setImageLoadErrors] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(STATUS_FILTER_STORAGE_KEY, statusFilter);
+  }, [statusFilter]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -245,6 +271,7 @@ const ActivitiesDashboard: React.FC = () => {
             <option value="all">All statuses</option>
             <option value="ready">Ready for Live</option>
             <option value="needs_review">Needs Review</option>
+            <option value="attention">Needs Attention</option>
           </select>
         </div>
       </div>
@@ -288,7 +315,19 @@ const ActivitiesDashboard: React.FC = () => {
                 </tr>
               ) : null}
 
-              {activities?.items.map((activity) => (
+              {activities?.items.map((activity) => {
+                const attentionReasons: string[] = [];
+                if (activity.readyForLive && activity.belowRecommendedImages) {
+                  attentionReasons.push(`${activity.approvedImageCount} approved image${activity.approvedImageCount === 1 ? '' : 's'} (minimum ${MIN_RECOMMENDED_IMAGES})`);
+                }
+                if (activity.readyForLive && activity.hasLocationQualityIssue) {
+                  attentionReasons.push('Location needs validation');
+                }
+                if (activity.openIssueCount > 0) {
+                  attentionReasons.push(`${activity.openIssueCount} open data issue${activity.openIssueCount === 1 ? '' : 's'}`);
+                }
+
+                return (
                 <tr key={activity.externalId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                   <td className="px-6 py-4">
                     <input className="rounded border-slate-300 text-primary focus:ring-primary dark:border-slate-700 dark:bg-slate-800" type="checkbox" />
@@ -341,7 +380,9 @@ const ActivitiesDashboard: React.FC = () => {
                     <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                       {activity.category}
                     </span>
-                    <p className="mt-1 text-xs text-slate-500">{activity.approvedImageCount}/5 approved images</p>
+                    <p className={`mt-1 text-xs ${activity.readyForLive && activity.belowRecommendedImages ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-slate-500'}`}>
+                      {activity.approvedImageCount}/5 approved images
+                    </p>
                   </td>
                   <td className="px-6 py-4">
                     {activity.readyForLive ? (
@@ -355,10 +396,21 @@ const ActivitiesDashboard: React.FC = () => {
                         Needs Review
                       </span>
                     )}
+                    {activity.needsAttention ? (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        <span className="material-symbols-outlined text-sm">warning</span>
+                        Needs Attention
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-500">
                       {activity.status === 'active' ? 'Active' : 'Inactive'}
                       {activity.hasFullImageSet ? ' · Full image set' : ' · Partial image set'}
                     </p>
+                    {attentionReasons.length > 0 ? (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                        {attentionReasons.join(' · ')}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
@@ -371,7 +423,8 @@ const ActivitiesDashboard: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

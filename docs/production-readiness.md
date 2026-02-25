@@ -11,6 +11,8 @@ What is complete:
 - Five ranked image slots are auto-created per activity.
 - Approved image JSONL sync from `fun-crawl` updates image status/readiness in admin DB.
 - Admin API returns first approved image URL per activity when available.
+- Activity detail page is live-data driven (content + approved images).
+- Dashboard supports sticky status filter and readiness/attention workflows.
 
 What blocks production go-live:
 - No production API layer for mobile/admin traffic yet.
@@ -18,6 +20,19 @@ What blocks production go-live:
 - No auth/authorization policy implementation.
 - No monitoring/alerting/backup runbooks configured.
 - Image CDN/object-storage strategy is not finalized (currently POC local/`fun-crawl` serving).
+
+## Current Task List (February 25, 2026)
+- [x] Local Postgres container setup and Houston CSV import
+- [x] Approved images JSONL import and URL bridge from `fun-crawl`
+- [x] Activities dashboard backed by Postgres (no static mock rows)
+- [x] Status filters: `All`, `Ready for Live`, `Needs Review`, `Needs Attention`
+- [x] Sticky status filter persistence across navigation
+- [x] Activity detail page loads real DB fields + approved hero/gallery images
+- [x] Row-level warning callouts for data quality (open issues, low approved image count, location quality)
+- [ ] Add external location validation API (Google Address Validation) and cost guardrails
+- [ ] Add admin workflow actions for warning resolution (not just display)
+- [ ] Decide if readiness should be hard-gated by minimum approved images (currently warning-only)
+- [ ] Implement production backend/API deployment + observability
 
 ## 1. Data model and quality
 - [x] Activities schema and joins (locations, age groups, activity types).

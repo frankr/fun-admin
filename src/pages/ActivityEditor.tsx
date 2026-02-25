@@ -1,11 +1,172 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+
+type ActivityDetailImage = {
+  rankOrder: number;
+  status: 'pending' | 'ready' | 'rejected';
+  publicUrl: string | null;
+  sourceFilename: string | null;
+  reviewClassification: string | null;
+  altText: string | null;
+  approvedAt: string | null;
+};
+
+type ActivityDetailIssue = {
+  fieldName: string;
+  issueCode: string;
+  issueMessage: string;
+};
+
+type ActivityDetail = {
+  externalId: string;
+  name: string;
+  description: string | null;
+  websiteUrl: string | null;
+  status: 'active' | 'inactive';
+  hoursRaw: string | null;
+  email: string | null;
+  phoneRaw: string | null;
+  phoneNormalized: string | null;
+  locationType: string | null;
+  primaryLocation: string | null;
+  indoorOutdoor: 'indoor' | 'outdoor' | 'both' | null;
+  goodForParties: boolean | null;
+  seasonal: boolean | null;
+  petFriendly: boolean | null;
+  parkingAvailable: boolean | null;
+  priceLevel: number | null;
+  approvedImageCount: number;
+  hasFullImageSet: boolean;
+  readyForLive: boolean;
+  ageGroups: string[];
+  activityTypes: string[];
+  images: ActivityDetailImage[];
+  openIssues: ActivityDetailIssue[];
+};
+
+const CITY_CODE = 'HOU';
+
+function formatBoolean(value: boolean | null): string {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return 'Not set';
+}
+
+function formatIndoorOutdoor(value: ActivityDetail['indoorOutdoor']): string {
+  if (!value) return 'Not set';
+  if (value === 'both') return 'Indoor + Outdoor';
+  if (value === 'indoor') return 'Indoor';
+  return 'Outdoor';
+}
+
+function formatPriceLevel(value: number | null): string {
+  if (!value || value < 1 || value > 4) return 'Not set';
+  return '$'.repeat(value);
+}
 
 const ActivityEditor: React.FC = () => {
+  const { id } = useParams();
+  const [activity, setActivity] = useState<ActivityDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imageLoadErrors, setImageLoadErrors] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadActivity() {
+      if (!id) {
+        setError('Missing activity ID in route.');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/activities/${encodeURIComponent(id)}?city=${CITY_CODE}`);
+        if (!response.ok) {
+          throw new Error(`Activity request failed: ${response.status}`);
+        }
+
+        const payload = (await response.json()) as ActivityDetail;
+        if (!cancelled) {
+          setActivity(payload);
+          setImageLoadErrors({});
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Unable to load activity.';
+          setError(message);
+          setActivity(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadActivity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const approvedImages = useMemo(
+    () => (activity?.images ?? []).filter((image) => image.status === 'ready' && image.publicUrl),
+    [activity],
+  );
+
+  const heroImage = useMemo(() => {
+    if (approvedImages.length === 0) {
+      return null;
+    }
+    return approvedImages.find((image) => image.rankOrder === 1) ?? approvedImages[0];
+  }, [approvedImages]);
+
+  const galleryImages = useMemo(
+    () =>
+      approvedImages.filter((image) => {
+        if (!heroImage) return true;
+        return image.rankOrder !== heroImage.rankOrder;
+      }),
+    [approvedImages, heroImage],
+  );
+
+  if (loading) {
+    return (
+      <main className="px-4 lg:px-40 flex flex-1 justify-center py-8">
+        <div className="layout-content-container flex flex-col max-w-[1200px] flex-1">
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+            Loading activity details...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !activity) {
+    return (
+      <main className="px-4 lg:px-40 flex flex-1 justify-center py-8">
+        <div className="layout-content-container flex flex-col max-w-[1200px] flex-1 gap-4">
+          <Link to="/" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+            <span className="material-symbols-outlined text-sm">arrow_back</span>
+            Back to Dashboard
+          </Link>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+            Could not load activity details: {error ?? 'Unknown error'}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="px-4 lg:px-40 flex flex-1 justify-center py-8">
       <div className="layout-content-container flex flex-col max-w-[1200px] flex-1">
-        {/* Breadcrumbs & Back Button */}
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex items-center gap-2 text-primary">
             <Link to="/" className="flex items-center gap-1 text-sm font-medium hover:underline">
@@ -18,76 +179,120 @@ const ActivityEditor: React.FC = () => {
             <span className="material-symbols-outlined text-xs">chevron_right</span>
             <span>Activities</span>
             <span className="material-symbols-outlined text-xs">chevron_right</span>
-            <span className="text-slate-900 dark:text-slate-100 font-medium">Skydiving Adventure</span>
+            <span className="text-slate-900 dark:text-slate-100 font-medium">{activity.name}</span>
           </div>
         </div>
 
-        {/* Page Header & Status Toggle */}
         <div className="flex flex-wrap justify-between items-end gap-4 pb-8 border-b border-slate-200 dark:border-slate-800 mb-8">
           <div className="flex flex-col gap-2">
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Activity ID: #SK-9920</p>
-            <h1 className="text-slate-900 dark:text-slate-100 text-4xl font-black leading-tight tracking-[-0.033em]">Skydiving Adventure</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Activity ID: {activity.externalId}</p>
+            <h1 className="text-slate-900 dark:text-slate-100 text-4xl font-black leading-tight tracking-[-0.033em]">{activity.name}</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {activity.readyForLive ? 'Ready for live' : 'Needs review'} · {activity.approvedImageCount}/5 approved images
+            </p>
           </div>
-          <div className="flex items-center gap-6 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex flex-col gap-0.5">
-              <p className="text-slate-900 dark:text-slate-100 text-sm font-bold">Activity Status</p>
-              <p className="text-slate-500 dark:text-slate-400 text-xs">Platform Visibility</p>
-            </div>
-            <label className="relative flex h-[28px] w-[50px] cursor-pointer items-center rounded-full border-none bg-slate-200 dark:bg-slate-700 p-1 has-[:checked]:justify-end has-[:checked]:bg-primary transition-all">
-              <div className="h-full aspect-square rounded-full bg-white shadow-md"></div>
-              <input defaultChecked className="invisible absolute peer" type="checkbox" readOnly />
-            </label>
-            <span className="text-primary font-bold text-sm min-w-[48px]">Active</span>
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                activity.readyForLive
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  activity.readyForLive ? 'bg-emerald-600' : 'bg-amber-600'
+                }`}
+              ></span>
+              {activity.readyForLive ? 'Ready for Live' : 'Needs Review'}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                activity.status === 'active'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                  : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {activity.status === 'active' ? 'Active' : 'Inactive'}
+            </span>
           </div>
         </div>
 
-        {/* Two-Column Editor Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Details */}
           <div className="lg:col-span-7 flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-6 shadow-sm">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">edit_note</span>
                 Activity Details
               </h3>
+
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Activity Name</label>
-                <input className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100" type="text" defaultValue="Skydiving Adventure" />
+                <input
+                  className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                  type="text"
+                  value={activity.name}
+                  readOnly
+                />
               </div>
+
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Address</label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">location_on</span>
-                  <input className="w-full pl-10 rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100" type="text" defaultValue="123 Gravity Lane, Skydive Valley, AZ 85001" />
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Primary Location</label>
+                <textarea
+                  className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                  rows={2}
+                  value={activity.primaryLocation ?? 'Location pending review'}
+                  readOnly
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Website URL</label>
+                  <input
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                    type="text"
+                    value={activity.websiteUrl ?? 'Not set'}
+                    readOnly
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Phone</label>
+                  <input
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                    type="text"
+                    value={activity.phoneRaw ?? activity.phoneNormalized ?? 'Not set'}
+                    readOnly
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Email</label>
+                  <input
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                    type="text"
+                    value={activity.email ?? 'Not set'}
+                    readOnly
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Hours</label>
+                  <input
+                    className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                    type="text"
+                    value={activity.hoursRaw ? activity.hoursRaw.replace(/\n/g, ' | ') : 'Not set'}
+                    readOnly
+                  />
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Website URL</label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">link</span>
-                  <input className="w-full pl-10 rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100" type="url" defaultValue="https://skydivingadventure.com" />
-                </div>
-              </div>
+
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Description</label>
-                <textarea className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100" rows={5} defaultValue="Experience the ultimate thrill of freefall from 14,000 feet! Join our expert instructors for a tandem jump that offers breathtaking views of the desert landscape. Perfect for beginners and thrill-seekers alike. Equipment, training, and a commemorative video are included in the package." />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Category Tags</label>
-                <div className="flex flex-wrap gap-2 p-3 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
-                  <span className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">
-                    Adventure <button className="material-symbols-outlined text-[14px]">close</button>
-                  </span>
-                  <span className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">
-                    Extreme Sports <button className="material-symbols-outlined text-[14px]">close</button>
-                  </span>
-                  <span className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">
-                    Outdoor <button className="material-symbols-outlined text-[14px]">close</button>
-                  </span>
-                  <button className="flex items-center gap-1 text-slate-400 hover:text-primary px-2 py-1 rounded-md text-xs font-bold transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">add</span> Add Tag
-                  </button>
-                </div>
+                <textarea
+                  className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent dark:text-slate-100"
+                  rows={5}
+                  value={activity.description ?? 'Description pending review'}
+                  readOnly
+                />
               </div>
             </div>
 
@@ -96,162 +301,160 @@ const ActivityEditor: React.FC = () => {
                 <span className="material-symbols-outlined text-primary">category</span>
                 Categorization & Attributes
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Location Type</label>
-                  <select className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100 text-sm">
-                    <option>Urban</option>
-                    <option selected>Nature</option>
-                    <option>Coastal</option>
-                    <option>Rural</option>
-                  </select>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Location Type</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{activity.locationType ?? 'Not set'}</p>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Price Range</label>
-                  <select className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100 text-sm">
-                    <option>$</option>
-                    <option>$$</option>
-                    <option selected>$$$</option>
-                    <option>$$$$</option>
-                  </select>
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Indoor / Outdoor</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{formatIndoorOutdoor(activity.indoorOutdoor)}</p>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Pet Friendly</label>
-                  <select className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100 text-sm">
-                    <option selected>No</option>
-                    <option>Yes</option>
-                  </select>
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Price Level</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{formatPriceLevel(activity.priceLevel)}</p>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Seasonal</label>
-                  <select className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100 text-sm">
-                    <option selected>Year-round</option>
-                    <option>Summer</option>
-                    <option>Winter</option>
-                    <option>Spring/Autumn</option>
-                  </select>
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Good for Parties</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{formatBoolean(activity.goodForParties)}</p>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Good for Parties</label>
-                  <select className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100 text-sm">
-                    <option selected>Yes</option>
-                    <option>No</option>
-                  </select>
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Seasonal</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{formatBoolean(activity.seasonal)}</p>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Indoor or Outdoor</label>
-                  <select className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-transparent focus:border-primary focus:ring-primary dark:text-slate-100 text-sm">
-                    <option selected>Outdoor</option>
-                    <option>Indoor</option>
-                    <option>Both</option>
-                  </select>
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pet Friendly</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{formatBoolean(activity.petFriendly)}</p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:col-span-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Parking Available</p>
+                  <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">{formatBoolean(activity.parkingAvailable)}</p>
                 </div>
               </div>
+
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Activity Type</label>
-                <div className="flex flex-wrap gap-2 p-3 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
-                  <span className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">
-                    Sports <button className="material-symbols-outlined text-[14px]">close</button>
-                  </span>
-                  <button className="flex items-center gap-1 text-slate-400 hover:text-primary px-2 py-1 rounded-md text-xs font-bold transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">add</span> Add Type
-                  </button>
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Activity Types</label>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-dashed border-slate-300 p-3 dark:border-slate-700">
+                  {activity.activityTypes.length === 0 ? (
+                    <span className="text-xs text-slate-500">No activity types assigned.</span>
+                  ) : (
+                    activity.activityTypes.map((type) => (
+                      <span key={type} className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
+                        {type}
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
+
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Age Group</label>
-                <div className="flex flex-wrap gap-2 p-3 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
-                  <span className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">
-                    Adults <button className="material-symbols-outlined text-[14px]">close</button>
-                  </span>
-                  <span className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">
-                    Teens <button className="material-symbols-outlined text-[14px]">close</button>
-                  </span>
-                  <button className="flex items-center gap-1 text-slate-400 hover:text-primary px-2 py-1 rounded-md text-xs font-bold transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">add</span> Add Group
-                  </button>
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Age Groups</label>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-dashed border-slate-300 p-3 dark:border-slate-700">
+                  {activity.ageGroups.length === 0 ? (
+                    <span className="text-xs text-slate-500">No age groups assigned.</span>
+                  ) : (
+                    activity.ageGroups.map((group) => (
+                      <span key={group} className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
+                        {group}
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Media Management */}
           <div className="lg:col-span-5 flex flex-col gap-6">
-            {/* Hero Shot */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">image</span>
-                  Hero Shot
-                </h3>
-                <div className="flex gap-2">
-                  <button className="text-xs font-bold text-primary hover:underline">Replace</button>
-                  <button className="text-xs font-bold text-red-500 hover:underline">Remove</button>
-                </div>
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">image</span>
+                Hero Shot (Rank 1)
+              </h3>
+              <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800">
+                {heroImage && !imageLoadErrors[heroImage.rankOrder] ? (
+                  <img
+                    className="w-full h-full object-cover"
+                    src={heroImage.publicUrl ?? ''}
+                    alt={heroImage.altText ?? `${activity.name} hero`}
+                    onError={() =>
+                      setImageLoadErrors((previous) => ({
+                        ...previous,
+                        [heroImage.rankOrder]: true,
+                      }))
+                    }
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
+                    No approved hero image yet
+                  </div>
+                )}
               </div>
-              <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 group">
-                <img className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5adW4U0_onwIKVa7G6hxw7L5-GaZrFQ-YoP29wWDqqv_LN1Uoh0BPN8IWIobXB4Cq9xk30a9VrLDVstHUv9CX24iHfs1eSnd1fHdH2xPrw_HswlCJ6mSZ3vsZV0bDn0lBGU7Cea0j7FGm6ongOdQNOD_RNGfnx-AymLgtHfOSEsQwclY_DjVuhYMnTIPBknEiOlFS4kYby3l8LHUun0Bcz-IfKCM1y1r9R_XJwn5HIa0fHIPkt_WDnRtIiWZY_Bx9GPaYgJ6aIGN6" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <button className="bg-white text-slate-900 px-4 py-2 rounded-lg font-bold text-sm shadow-xl flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sm">photo_camera</span>
-                    Update Cover
-                  </button>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 italic">Recommended size: 1920x1080px. Max file size: 5MB.</p>
+              <p className="text-xs text-slate-500">
+                Approved images imported: {activity.approvedImageCount}/5 {activity.hasFullImageSet ? '· Full set' : '· Partial set'}
+              </p>
             </div>
 
-            {/* Gallery */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-6 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-4 shadow-sm">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">collections</span>
-                Gallery
+                Approved Gallery
               </h3>
-              <div className="grid grid-cols-2 gap-4">
-                {/* Gallery Item 1 */}
-                <div className="flex flex-col gap-2">
-                  <div className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800">
-                    <img className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCimkzA27AqLUqUp6JSVv2xtetwiHtuZfAjRMrdl2PgAPlD3LsMMEvB10qmqZfqCpyv1I5dwQHH4vFutGZndZzh_X28cnGJxp65Ezf4E63sclM-dZXih9zEsgKySEtCPRYXeP8Vw6LLYjoTvOfcI92n_-4ITs4kHhafASMihUZgqUtqfse9s-1-fwfLxuD4TNDH0V6J4P0E1q6FtCkx9cBwQ0UL5A95IiUiJCAgpIVyiJY60Yn7j-CJ9-o0sI7nKPIpU-U0jDwA-ElM" />
-                    <button className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-md shadow-lg hover:bg-red-600 transition-colors">
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
-                  </div>
-                  <input className="text-xs w-full border-none bg-slate-100 dark:bg-slate-800 rounded px-2 py-1 focus:ring-1 focus:ring-primary" placeholder="Add caption..." type="text" defaultValue="Safe landing" />
+              {galleryImages.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">
+                  No additional approved images yet.
                 </div>
-                {/* Gallery Item 2 */}
-                <div className="flex flex-col gap-2">
-                  <div className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800">
-                    <img className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1I8Cg5j-J3SIQUx-Pwovrq8kDH3jufnpbxpgTbzm8vXXn64UAnm8Hh-eCzOeTIaHiNm8nD9eD4tHhNnnWuyQjfpU23mCjIEYHSJUQoCVPLuWhuHdIwc35TIkuAM9moD5bcmQcMRUZaM3nZnt0iCQvOKssTOEf6uo5JtAAfmtN9xanu-_3Pk9dGXSIByc8ZZjjB4qkqfOLN_7rUOS9QW2C0QRA9aXFfDVQ4D5VUp9bWtLBMD0ovTpxG5hQiujVmqUoJnFluf_ZpQnn" />
-                    <button className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-md shadow-lg hover:bg-red-600 transition-colors">
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
-                  </div>
-                  <input className="text-xs w-full border-none bg-slate-100 dark:bg-slate-800 rounded px-2 py-1 focus:ring-1 focus:ring-primary" placeholder="Add caption..." type="text" defaultValue="Tandem instructors" />
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {galleryImages.map((image) => (
+                    <div key={image.rankOrder} className="flex flex-col gap-2">
+                      <div className="relative aspect-[4/3] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800">
+                        {image.publicUrl && !imageLoadErrors[image.rankOrder] ? (
+                          <img
+                            className="w-full h-full object-cover"
+                            src={image.publicUrl}
+                            alt={image.altText ?? `${activity.name} image ${image.rankOrder}`}
+                            onError={() =>
+                              setImageLoadErrors((previous) => ({
+                                ...previous,
+                                [image.rankOrder]: true,
+                              }))
+                            }
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-slate-400 text-xs">
+                            Image unavailable
+                          </div>
+                        )}
+                        <span className="absolute left-2 top-2 rounded-md bg-black/70 px-2 py-0.5 text-[11px] font-semibold text-white">
+                          Rank {image.rankOrder}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">{image.reviewClassification ?? 'Approved'}</p>
+                    </div>
+                  ))}
                 </div>
-                {/* Add New Trigger */}
-                <div className="aspect-square rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center gap-2 hover:border-primary hover:bg-primary/5 cursor-pointer transition-all">
-                  <span className="material-symbols-outlined text-primary text-3xl">add_photo_alternate</span>
-                  <span className="text-xs font-bold text-slate-500">Upload Media</span>
-                </div>
-              </div>
+              )}
             </div>
-          </div>
-        </div>
 
-        {/* Footer Actions */}
-        <div className="mt-12 mb-20 flex items-center justify-between p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg sticky bottom-8 z-10">
-          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-            <span className="material-symbols-outlined text-sm">sync</span>
-            <span className="text-xs font-medium">Last saved 5 minutes ago</span>
-          </div>
-          <div className="flex gap-4">
-            <button className="px-6 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-              Discard Changes
-            </button>
-            <button className="px-8 py-2.5 rounded-lg bg-primary text-white font-bold text-sm shadow-lg shadow-primary/30 hover:bg-primary/90 transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">save</span>
-              Save Activity
-            </button>
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-3 shadow-sm">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">warning</span>
+                Open Data Issues
+              </h3>
+              {activity.openIssues.length === 0 ? (
+                <p className="text-sm text-emerald-700 dark:text-emerald-300">No open issues for this activity.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {activity.openIssues.map((issue) => (
+                    <div key={`${issue.fieldName}-${issue.issueCode}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                      <p className="font-semibold">{issue.fieldName}</p>
+                      <p>{issue.issueMessage}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
